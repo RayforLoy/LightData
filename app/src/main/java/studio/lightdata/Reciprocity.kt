@@ -15,6 +15,7 @@ data class ReciprocityResult(
     val status: ReciprocityStatus,
     val label: String,
     val sourceUrl: String?,
+    val networkEstimate: Boolean = false,
 )
 
 private const val HP5_GUIDE =
@@ -156,7 +157,8 @@ fun reciprocity(filmName: String, meteredSeconds: Double): ReciprocityResult {
         )
     }
     if (!meteredSeconds.isFinite() || meteredSeconds <= 0) return unknown("快门时间无效")
-    if (source == null) return unknown("无此预设的补偿资料")
+    val online = onlineReciprocity[filmName]
+    if (source == null && online == null) return unknown("无此预设的补偿资料")
     if (power != null) {
         if (meteredSeconds < .0001) return unknown("厂家未给出补偿值")
         if (meteredSeconds <= 1.0) return normal()
@@ -187,5 +189,14 @@ fun reciprocity(filmName: String, meteredSeconds: Double): ReciprocityResult {
             else ""
         return corrected(t, development)
     }
-    return unknown("厂家未给此快门的补偿值")
+    if (online != null && meteredSeconds > 1.0) {
+        val seconds = online.seconds(meteredSeconds, maxOf(1.0, unchangedRanges[filmName]?.endInclusive ?: 1.0))
+        val result = corrected(seconds)
+        if (result.exposureSeconds == null) return result
+        val limit = online.points.lastOrNull()?.first
+        val detail = if (limit != null && meteredSeconds > limit) " · 公式外推" else ""
+        return result.copy(label = result.label + " · 数据来源网络" + detail,
+            sourceUrl = online.url, networkEstimate = true)
+    }
+    return unknown("缺少此快门的补偿资料")
 }

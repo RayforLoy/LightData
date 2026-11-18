@@ -29,28 +29,39 @@ class ReciprocityTest {
     }
 
     @Test
-    fun portraHasNoPublishedLongExposureCorrection() {
+    fun portraUsesNetworkEstimateOnlyBeyondPublishedRange() {
         for (t in listOf(.0001, .2, 1.0)) {
             val result = reciprocity("PORTRA 400", t)
             assertEquals(ReciprocityStatus.UNCHANGED, result.status)
             assertEquals(t, result.exposureSeconds!!, 0.0)
         }
-        for (t in listOf(.00009, 1.01, 60.0)) {
+        assertNull(reciprocity("PORTRA 400", .00009).exposureSeconds)
+        for (t in listOf(1.01, 60.0)) {
             val result = reciprocity("PORTRA 400", t)
-            assertEquals(ReciprocityStatus.UNPUBLISHED, result.status)
-            assertNull(result.exposureSeconds)
+            assertTrue(result.networkEstimate && result.label.contains("数据来源网络"))
+            assertEquals(Math.pow(t,1.3), result.exposureSeconds!!, .00001)
+            assertTrue(result.sourceUrl!!.contains("metergeist.com"))
         }
     }
 
     @Test
     fun e100KeepsItsDiscreteDaylightFilterAdviceOutOfTheShutterCalculation() {
         assertEquals(ReciprocityStatus.UNCHANGED, reciprocity("EKTACHROME E100", 10.0).status)
-        for (t in listOf(10.01, 119.0, 120.0, 121.0)) {
+        for (t in listOf(10.01,119.0,121.0)) assertTrue(reciprocity("EKTACHROME E100",t).networkEstimate)
+        for (t in listOf(120.0)) {
             val result = reciprocity("EKTACHROME E100", t)
             assertEquals(ReciprocityStatus.UNPUBLISHED, result.status)
             assertNull(result.exposureSeconds)
             assertEquals(t == 120.0, result.label.contains("CC10R"))
         }
+    }
+
+    @Test fun preservesOnlineChartPointsAndManufacturerPrecedence() {
+        assertEquals(30.0,reciprocity("PORTRA 800",10.0).exposureSeconds!!,.0001)
+        assertTrue(reciprocity("PORTRA 800",100.0).label.contains("公式外推"))
+        assertFalse(reciprocity("PROVIA 100F",128.0).networkEstimate)
+        assertTrue(reciprocity("VELVIA 50",4.0).label.contains("滤镜"))
+        assertNull(reciprocity("PORTRA 160VC",10.0).exposureSeconds)
     }
 
     @Test

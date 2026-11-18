@@ -150,6 +150,31 @@ class FinderTest {
     }
 
     @Test
+    fun initialFramingFollowsTheProjectedRayAndKeepsItsStartingTilt() {
+        val frame = render(field,0.0)
+        val tilted = yaw(.2)
+        val session = ScanSession(frame,target,tilted,defaultResponse)
+        session.tick(frame,field,tilted)
+        val first = session.guide(0)
+        assertEquals(FinderPoint(.5,.5),first.startMark!!.center)
+        session.tick(frame,field,yaw(.5))
+        val guide = session.guide(0)
+        val mark = guide.startMark!!
+        assertEquals(.5 + tan(.3)/(2*target.x),mark.center.x,1e-6)
+        assertEquals(.5,mark.center.y,1e-6)
+        assertEquals(first.startPitchRadians,guide.startPitchRadians)
+        val turned = session.guide(90).startMark!!
+        assertEquals(mark.center.turned(90),turned.center)
+        assertEquals(0.0,turned.right.x,1e-6)
+        assertTrue(turned.right.y > 0)
+        session.tick(frame,field,yaw(PI))
+        assertNull(session.guide(0).startMark)
+        session.resumeTracking()
+        session.tick(frame,field,tilted)
+        assertEquals(first.startPitchRadians,session.guide(0).startPitchRadians)
+    }
+
+    @Test
     fun missingFieldIsTransparentAndDimensionsHonorTheRequestedGate() {
         val f = Frame(8, 6, IntArray(48) { gray(it + 30) }, 0.0, "rear")
         val src = Field(4.0, 3.0)

@@ -18,8 +18,15 @@ internal object OpenCvScanAligner : ScanAligner {
         return when(mode) {
             "ORB" -> ScanAligner { w,h,a,b,m -> alternative(w,h,a,b,m,false) }
             "ECC" -> ScanAligner { w,h,a,b,m -> alternative(w,h,a,b,m,true) }
-            "自动" -> ScanAligner { w,h,a,b,m ->
-                align(w,h,a,b,m) ?: alternative(w,h,a,b,m,false) ?: alternative(w,h,a,b,m,true)
+            "自动" -> object : ScanAligner {
+                override val rawReferences = true
+                override fun align(w: Int,h: Int,reference: ByteArray,incoming: ByteArray,mask: ByteArray) =
+                    candidates(w,h,reference,incoming,mask).firstOrNull()
+                override fun candidates(w: Int,h: Int,reference: ByteArray,incoming: ByteArray,mask: ByteArray) = sequence {
+                    OpenCvScanAligner.align(w,h,reference,incoming,mask)?.let { yield(it) }
+                    alternative(w,h,reference,incoming,mask,false)?.let { yield(it) }
+                    alternative(w,h,reference,incoming,mask,true)?.let { yield(it) }
+                }
             }
             else -> this
         }

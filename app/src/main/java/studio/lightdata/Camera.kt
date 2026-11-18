@@ -109,11 +109,43 @@ class Rig(
     private var baseTime = 10_000_000L
     private var baseIso = 100
     private var scan: Scan? = null
+    private var flashCapture: FlashCapture? = null
+    private var flashDone: ((String)->Unit)? = null
+    fun releaseScan(release: () -> Unit) { processor.post { release() } }
     private var panoramaLock = false
+    private var latestPreviewExposure: ScanExposure? = null
+    private var panoramaBaseline: ScanExposure? = null
+    private var panoramaExposure: ScanExposure? = null
+    private var manualRejected = false
+    private var previewRequest = 0L
+    private var settlingFrames = 0
+
+    private fun resetPanoramaExposure() {
+        panoramaBaseline = null
+        panoramaExposure = null
+        manualRejected = false
+        settlingFrames = 0
+    }
+
+    private fun choosePanoramaExposure(l: Lens, baseline: ScanExposure) {
+        panoramaBaseline = baseline
+        if (manualRejected) return
+        if (l.c[CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES]?.contains(
+                CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) != true) return
+        val times = l.c[CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE] ?: return
+        val iso = l.c[CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE] ?: return
+        val boost = l.c[CameraCharacteristics.CONTROL_POST_RAW_SENSITIVITY_BOOST_RANGE]
+            ?.clamp(baseline.boost) ?: 100
+        panoramaExposure = fasterScanExposure(baseline,times.lower..times.upper,iso.lower..iso.upper,boost)
+    }
+
     fun setPanoramaLock(enabled: Boolean) {
         h.post {
             if (panoramaLock != enabled) {
                 panoramaLock = enabled
+                resetPanoramaExposure()
+                if (enabled) lens?.let { l -> latestPreviewExposure?.let { choosePanoramaExposure(l,it) } }
+                else latestPreviewExposure = null
                 if (scan == null) request()
             }
         }
@@ -132,7 +164,9 @@ class Rig(
     data class Plane(val data: ByteArray, val rowStride: Int, val pixelStride: Int)
     class Packet(val w: Int, val h: Int, val planes: List<Plane>, val encoding: YuvEncoding) {
         var scanMetadata: String? = null
+        var panoramaLowLight = false
         var exposureMs = 0.0
+        var poseTimestampNs = 0L
         fun pixel(x: Int, y: Int): Int {
             fun code(p: Plane, col: Int, row: Int) = p.data[row*p.rowStride+col*p.pixelStride].toInt() and 255
             return encoding.rgb(code(planes[0],x,y),code(planes[1],x/2,y/2),code(planes[2],x/2,y/2))
@@ -175,9 +209,12 @@ class Rig(
         results.clear()
         rawGrid.clear()
         processingPreview = false
+        latestPreviewExposure = null
+        resetPanoramaExposure()
     }
 
     private fun release() {
+        finishFlash("闪光测光已结束",resume=false)
         generation++
         scan = null
         session?.close()
@@ -265,7 +302,10 @@ class Rig(
                 { r ->
                     runCatching {
                         r.acquireLatestImage()?.use { im ->
-                            if (gen == generation && (scan != null || !processingPreview && previewEnabled())) {
+                            val flash=flashCapture
+                            if(gen==generation && flash!=null) {
+                                flash.image(im.timestamp,snapshot(im))
+                            } else if (gen == generation && (scan != null || !processingPreview && previewEnabled())) {
                                 images[im.timestamp] = snapshot(im)
                                 match(im.timestamp)
                                 trim()
@@ -363,7 +403,7 @@ class Rig(
     fun calibrate(method: String, step: Double) {
         h.post {
             val l = lens ?: return@post
-            if (session == null || scan != null) {
+            if (session == null || scan != null || flashCapture != null) {
                 status("镜头尚未就绪")
                 return@post
             }
@@ -400,15 +440,76 @@ class Rig(
         }
     }
 
+    internal fun measureFlash(deviceId: Int, filmIso: Double, curve: (YuvEncoding)->DoubleArray,
+                              progress: (String)->Unit, done: (String)->Unit) {
+        h.post {
+            val l=lens
+            val session=session
+            val camera=camera
+            val target=yuv?.surface
+            if(l==null || session==null || camera==null || target==null || scan!=null ||
+                panoramaLock || flashCapture!=null) {
+                done("请先退出拼接或校准并等待镜头就绪")
+                return@post
+            }
+            if(l.c[CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES]?.contains(
+                    CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)!=true ||
+                l.c[CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE]!=CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME) {
+                done("当前镜头缺少手动曝光或同步时钟，请切换镜头")
+                return@post
+            }
+            flashDone=done
+            var pulse: UsbFlashPulse?=null
+            try {
+                pulse=UsbFlashPulse(ctx,deviceId,h) { finishFlash(it) }
+                val job=FlashCapture(camera,session,target,l,h,pulse,filmIso,curve,progress) { finishFlash(it) }
+                flashCapture=job
+                ++previewRequest
+                job.start()
+            } catch(e:Exception) {
+                if(flashCapture==null) pulse?.close()
+                finishFlash("无法开始闪光测光 · "+(e.localizedMessage ?: "设备不可用"))
+            }
+        }
+    }
+
+    internal fun cancelFlash() { h.post { finishFlash("已取消闪光测光") } }
+
+    private fun finishFlash(message: String,resume: Boolean=true) {
+        val done=flashDone ?: return
+        flashDone=null
+        flashCapture?.close()
+        flashCapture=null
+        images.clear()
+        results.clear()
+        if(resume) request()
+        done(message)
+    }
+
     private fun request() {
+        if(flashCapture!=null) return
         val d = camera ?: return
         val s = session ?: return
         val l = lens ?: return
         val b = scan
         val gen = generation
+        val manual = if (b == null && panoramaLock) panoramaExposure else null
+        val requestId = ++previewRequest
+        if (b == null) {
+            images.clear()
+            results.clear()
+        }
+        fun fallBackToAe() {
+            if (manual == null || gen != generation || requestId != previewRequest) return
+            resetPanoramaExposure()
+            manualRejected = true
+            request()
+        }
         try {
             val req =
-                d.createCaptureRequest(
+                if (manual != null && l.owner != l.id)
+                    d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW,setOf(l.id))
+                else d.createCaptureRequest(
                     if (b == null) CameraDevice.TEMPLATE_PREVIEW
                     else CameraDevice.TEMPLATE_STILL_CAPTURE
                 )
@@ -417,8 +518,21 @@ class Rig(
                 CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
                 CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF,
             )
-            if (panoramaLock && b == null) {
-                if (l.c[CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE] == true)
+            if (panoramaLock && b == null && panoramaBaseline != null) {
+                if (manual != null) {
+                    val physicalKeys = if (l.id == l.owner) emptyList() else
+                        ctx.getSystemService(CameraManager::class.java).getCameraCharacteristics(l.owner)
+                            .availablePhysicalCameraRequestKeys.orEmpty()
+                    fun <T> set(key: CaptureRequest.Key<T>, value: T) {
+                        req.set(key,value)
+                        if (key in physicalKeys) req.setPhysicalCameraKey(key,value,l.id)
+                    }
+                    set(CaptureRequest.CONTROL_AE_MODE,CaptureRequest.CONTROL_AE_MODE_OFF)
+                    set(CaptureRequest.SENSOR_EXPOSURE_TIME,manual.timeNs)
+                    set(CaptureRequest.SENSOR_SENSITIVITY,manual.iso)
+                    if (CaptureRequest.CONTROL_POST_RAW_SENSITIVITY_BOOST in l.c.availableCaptureRequestKeys)
+                        set(CaptureRequest.CONTROL_POST_RAW_SENSITIVITY_BOOST,manual.boost)
+                } else if (l.c[CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE] == true)
                     req.set(CaptureRequest.CONTROL_AE_LOCK, true)
                 if (l.c[CameraCharacteristics.CONTROL_AWB_LOCK_AVAILABLE] == true)
                     req.set(CaptureRequest.CONTROL_AWB_LOCK, true)
@@ -432,6 +546,7 @@ class Rig(
                     req.set(CaptureRequest.CONTROL_AWB_LOCK, true)
                 status("校准 " + (b.index + 1) + " / " + b.times.size)
             }
+            var mismatchedResults = 0
             val cb =
                 object : CameraCaptureSession.CaptureCallback() {
                     override fun onCaptureCompleted(
@@ -439,8 +554,21 @@ class Rig(
                         r: CaptureRequest,
                         total: TotalCaptureResult,
                     ) {
-                        if (gen != generation) return
+                        if (gen != generation || requestId != previewRequest) return
                         val physical = total.physicalCameraResults[l.id] ?: total
+                        if (manual != null) {
+                            val actualTime = physical[CaptureResult.SENSOR_EXPOSURE_TIME]
+                            val actualIso = physical[CaptureResult.SENSOR_SENSITIVITY]
+                            val actualBoost = physical[CaptureResult.CONTROL_POST_RAW_SENSITIVITY_BOOST] ?: 100
+                            val agrees = actualTime != null && actualIso != null &&
+                                abs(log2(actualTime.toDouble()/manual.timeNs)) < .3 &&
+                                abs(log2(actualIso*actualBoost.toDouble()/(manual.iso.toDouble()*manual.boost))) < .3
+                            mismatchedResults = if (agrees) 0 else mismatchedResults+1
+                            if (!agrees) {
+                                if (mismatchedResults >= 3) fallBackToAe()
+                                return
+                            }
+                        }
                         val ts = physical[CaptureResult.SENSOR_TIMESTAMP] ?: return
                         results[ts] = physical to (if (b == null) -1 else b.index)
                         match(ts)
@@ -452,7 +580,8 @@ class Rig(
                         r: CaptureRequest,
                         f: CaptureFailure,
                     ) {
-                        if (gen == generation && b != null) abort("包围曝光失败，请重试")
+                        if (manual != null) fallBackToAe()
+                        else if (gen == generation && b != null) abort("包围曝光失败，请重试")
                     }
                 }
             if (b == null) s.setRepeatingRequest(req.build(), cb, h)
@@ -471,7 +600,8 @@ class Rig(
                 )
             }
         } catch (e: Exception) {
-            if (b != null) abort("曝光请求失败：" + e.localizedMessage)
+            if (manual != null) fallBackToAe()
+            else if (b != null) abort("曝光请求失败：" + e.localizedMessage)
             else status("预览请求失败：" + e.localizedMessage)
         }
     }
@@ -502,7 +632,28 @@ class Rig(
         val synced =
             l.c[CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE] ==
                 CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
+        val activeRows = l.c[CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE]
+        val usedRows = meta[CaptureResult.SCALER_CROP_REGION] ?: activeRows
+        val centerRow = if (activeRows != null && usedRows != null && activeRows.height() > 0)
+            ((usedRows.exactCenterY() - activeRows.top) / activeRows.height()).toDouble().coerceIn(0.0,1.0)
+            else .5
+        image.poseTimestampNs = exposurePoseTimestamp(if (synced) ts else 0L,time,
+            meta[CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW],centerRow)
+        if (b == null && !panoramaLock)
+            latestPreviewExposure = ScanExposure(time,iso,(boost*100).roundToInt())
+        if (panoramaLock && b == null && panoramaBaseline == null) {
+            // Camera reopened during a scan or scan started before its first preview.
+            // Obtain a real AE baseline from this lens before locking exposure.
+            val ae = meta[CaptureResult.CONTROL_AE_STATE]
+            if (++settlingFrames >= 10 || ae == CaptureResult.CONTROL_AE_STATE_CONVERGED ||
+                ae == CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED) {
+                choosePanoramaExposure(l,ScanExposure(time,iso,(boost*100).roundToInt()))
+                request()
+            }
+            return
+        }
         if (panoramaLock) {
+            image.panoramaLowLight = slowScanShutter(time)
             val wb = meta[CaptureResult.COLOR_CORRECTION_GAINS]
             image.scanMetadata = org.json.JSONObject()
                 .put("aeState",meta[CaptureResult.CONTROL_AE_STATE])
@@ -510,6 +661,51 @@ class Rig(
                 .put("aeLock",meta[CaptureResult.CONTROL_AE_LOCK])
                 .put("awbLock",meta[CaptureResult.CONTROL_AWB_LOCK])
                 .put("iso",iso).put("aperture",a)
+                .put("sensorTimestampNs",ts)
+                .put("poseTimestampNs",image.poseTimestampNs)
+                .put("timestampRealtime",synced)
+                .put("exposureTimeNs",time)
+                .put("baselineShutterNs",panoramaBaseline?.timeNs)
+                .put("baselineSensorIso",panoramaBaseline?.iso)
+                .put("baselinePostRawBoost",panoramaBaseline?.boost)
+                .put("targetShutterNs",SCAN_SHUTTER_NS)
+                .put("requestedShutterNs",panoramaExposure?.timeNs)
+                .put("requestedSensorIso",panoramaExposure?.iso)
+                .put("manualExposureRejected",manualRejected)
+                .put("postRawBoost", (boost*100).roundToInt())
+                .put("slowScanShutter",image.panoramaLowLight)
+                .put("rollingShutterSkewNs",meta[CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW])
+                .put("focalLengthMm",meta[CaptureResult.LENS_FOCAL_LENGTH])
+                .put("intrinsicCalibration",(meta[CaptureResult.LENS_INTRINSIC_CALIBRATION]
+                    ?: l.c[CameraCharacteristics.LENS_INTRINSIC_CALIBRATION])?.let {
+                    org.json.JSONArray(it.toList())
+                })
+                .put("lensDistortion",(meta[CaptureResult.LENS_DISTORTION]
+                    ?: l.c[CameraCharacteristics.LENS_DISTORTION])?.let {
+                    org.json.JSONArray(it.toList())
+                })
+                .put("sensorOrientation",l.angle)
+                .put("preCorrectionActiveArray",l.c[CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE]?.let {
+                    org.json.JSONArray(listOf(it.left,it.top,it.right,it.bottom))
+                })
+                .put("cropRegion",meta[CaptureResult.SCALER_CROP_REGION]?.let {
+                    org.json.JSONArray(listOf(it.left,it.top,it.right,it.bottom))
+                })
+                .put("streamSize",org.json.JSONArray(listOf(image.w,image.h)))
+                .put("cameraOwner",l.owner).put("physicalCamera",l.id)
+                .put("activePhysicalCamera",meta[CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID])
+                .put("distortionCorrectionMode",meta[CaptureResult.DISTORTION_CORRECTION_MODE])
+                .put("opticalStabilizationMode",meta[CaptureResult.LENS_OPTICAL_STABILIZATION_MODE])
+                .put("videoStabilizationMode",meta[CaptureResult.CONTROL_VIDEO_STABILIZATION_MODE])
+                .put("sensorSizeMm",l.c[CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE]?.let {
+                    org.json.JSONArray(listOf(it.width,it.height))
+                })
+                .put("pixelArraySize",l.c[CameraCharacteristics.SENSOR_INFO_PIXEL_ARRAY_SIZE]?.let {
+                    org.json.JSONArray(listOf(it.width,it.height))
+                })
+                .put("activeArray",l.c[CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE]?.let {
+                    org.json.JSONArray(listOf(it.left,it.top,it.right,it.bottom))
+                })
                 .put("wbGains",wb?.let { org.json.JSONArray(listOf(it.red,it.greenEven,it.greenOdd,it.blue)) })
                 .toString()
         }

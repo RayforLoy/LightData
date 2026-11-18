@@ -330,6 +330,13 @@ fun percentile(h: IntArray, q: Double): Int {
     return h.lastIndex
 }
 
+// Conservative scene-level advisory on pre-preview measurements. The EV thresholds
+// are heuristics, independent of film speed and the chosen target exposure.
+internal fun dimMeterWarning(sceneEv100: Double?, histogram: IntArray): Boolean {
+    if (sceneEv100 == null || !sceneEv100.isFinite() || histogram.none { it > 0 }) return false
+    return sceneEv100 <= 0.0 || (sceneEv100 <= 3.0 && percentile(histogram, .9) <= 16)
+}
+
 fun meter(hist: IntArray, response: DoubleArray): Double {
     var s = 0.0
     val lo = percentile(hist, .02)

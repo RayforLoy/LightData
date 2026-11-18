@@ -1,0 +1,94 @@
+Panorama investigation — 2026-11-18
+
+Scope: investigate current failures and actual complete stitching SDKs. No release
+or claim that panorama quality is fixed. Version remains 0.1.11-beta.
+
+Private evidence (not committed):
+- panotest.zip: nine system-camera JPEGs.
+- LightData-panorama _2_.zip: 61 candidate JPEG/JSON pairs, ECC only. Manifest
+  acceptedFrames=1, droppedRejectedAttempts=32, completeAcceptedHistory=true.
+  This export does not contain separate LK/ORB sessions.
+- Recorded camera EV is constant at 4.044343646552531, ISO 978, exposure about
+  29.994 ms. First frame AE/AWB lock=false, later frames true. WB gains change
+  slightly on lock. Exposure drift cannot explain this session's total rejection.
+
+Android emulator replay:
+- LK, ORB, ECC, automatic: all coverage=0.20810185185185184.
+- Direct Mosaic replay (without motion gate): one initial accepted image,
+  60 overlap_disagrees rejections for each backend.
+- This isolates a shared overlap validation bottleneck; it does not establish
+  whether each rejected warp was geometrically correct. Simply deleting the
+  check risks reintroducing tearing. The session replay is sparse (candidate
+  timestamps only), not an accurate reproduction of live capture scheduling.
+- Added lastDecision instrumentation and per-backend rejection counts.
+- Built debug and instrumentation APKs; replay completed on emulator-5592.
+  Instrumentation test completion is NOT a panorama-quality pass.
+
+Current architecture limitations:
+- Validation uses small unsmoothed luminance patches and a strict correlation
+  vote. Noise/low texture, incorrect inertial projection, parallax, and timing
+  offsets need separate diagnosis; no single cause is yet proven.
+- Native fitting runs at 256-pixel long edge. Pose error outside its small
+  similarity-transform search region cannot be corrected reliably.
+- Previously full-confidence atlas pixels never change. There is no global
+  camera adjustment, global exposure solution, seam optimization or multiband
+  recomposition. Locking AE/AWB does not eliminate lens shading, local ISP
+  processing, parallax or incorrectly corresponding pixels.
+
+Complete OpenCV pipeline experiment:
+- Python OpenCV 4.11.0, images resized to long edge 1200, PANORAMA defaults.
+- Status OK, but component=[1,2]: only two of nine inputs are composited.
+  Output 2459x1440 only shows the air-conditioner side. NOT a successful panorama.
+- Reproducible tool: tools/benchmark_panorama_sdk.py INPUT.zip OUTPUT_DIR.
+  Explicitly records component indices and all_inputs_used, not only status.
+- Initial cold run 4.52 seconds; repeat measured stitch call 0.38 seconds.
+  Desktop timings exclude decoding and must not be used as phone latency claims.
+- Official detailed sample: SIFT match_conf=.3/conf_thresh=.3 failed camera
+  adjustment. AKAZE match_conf=.3/conf_thresh=.7/reprojection adjustment used
+  five inputs but produced severely incorrect geometry. Neither passed visual QA.
+  For subset inputs the sample's Python features/matches were rebuilt after
+  leaveBiggestComponent (Python lists are not reduced in-place).
+- These are limited configurations on downsampled inputs, not proof that OpenCV
+  cannot stitch the full-resolution data with calibrated intrinsics/pose priors.
+
+SDK/source candidates checked:
+1. OpenCV complete C++ Stitcher/detail pipeline: preferred integration candidate.
+   Camera estimation, bundle adjustment, warping, compensation, seams and blending.
+   https://docs.opencv.org/4.x/d8/d19/tutorial_stitcher.html
+   https://github.com/opencv/opencv/blob/4.11.0/samples/python/stitching_detailed.py
+   Existing Maven Java integration does not expose this complete pipeline.
+   Use official Android SDK static stitching libraries with JNI/NDK; requires
+   build changes and device latency/memory tests, not merely another selector.
+
+2. notchip/expo-panoramic-stitcher: actual complete native Stitcher wrapper.
+   https://github.com/notchip/expo-panoramic-stitcher
+   Inspected android/CMakeLists.txt and native panorama_stitcher_jni.cpp.
+   CMake links official Android SDK static stitching and related modules.
+   JNI returns participating image indices and projection/camera geometry.
+   React Native/Expo adapter is unnecessary for our Kotlin app; native approach
+   can be adapted. It shares OpenCV's core, so it is NOT an independent algorithm.
+   Android integration and performance have not been tested in LightData.
+
+3. AOSP feature_mos: independent historical native panorama implementation.
+   https://android.googlesource.com/platform/packages/apps/Camera2/+/8bddf8c/jni/feature_mos/src/mosaic/Blend.cpp
+   https://android.googlesource.com/platform/packages/apps/Camera2/+/5a9ead1/jni/feature_mos_jni.cpp
+   Contains alignment and blending, but is old source rather than a maintained
+   drop-in SDK. Needs modern NDK/ABI adaptation and safety review. Do not label
+   it as the current Google Camera/Pixel panorama SDK. Secondary candidate.
+
+4. senovative/panorama-stitch-android-sdk: not recommended for this capture model.
+   https://github.com/senovative/panorama-stitch-android-sdk
+   Inspected OpenCvPanoramaEngine.kt: phaseCorrelate computes translations,
+   translations are chained, distance-based hard winner chooses overlapping pixels.
+   This does not solve large rotational perspective or global exposure variation.
+
+Recommended next implementation:
+- Retain capture/gyro guidance, but store keyframes independently of successful
+  atlas insertion. Separate 'captured' from 'successfully stitched' coverage.
+- Complete OpenCV backend with calibrated camera intrinsics and gyro pose priors,
+  global geometry and exposure optimization; compose the final image in a worker.
+- Keep radiometric measurement separate from cosmetically exposure-compensated
+  panorama colors, otherwise a prettier mosaic changes the meter reading.
+- Benchmark identical frames and target coverage, inspect doors/straight edges
+  and brightness seams, reject partial component success. Only then package a
+  0.1.xx device-test release. Do not promise that another default SDK fixes this.

@@ -13,6 +13,10 @@ class Pose(ctx: Context) : SensorEventListener {
     private val sensor =
         sensors.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
             ?: sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+    private val gravitySensor = if (sensor == null)
+        sensors.getDefaultSensor(Sensor.TYPE_GRAVITY) ?: sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        else null
+    @Volatile private var fallbackUp: FloatArray? = null
 
     private data class Reading(val timestamp: Long, val rotation: FloatArray)
 
@@ -26,10 +30,12 @@ class Pose(ctx: Context) : SensorEventListener {
 
     fun start() {
         sensor?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        gravitySensor?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
     }
 
     fun stop() {
         sensors.unregisterListener(this)
+        fallbackUp = null
         synchronized(history) {
             history.clear()
             matrix = null
@@ -39,6 +45,16 @@ class Pose(ctx: Context) : SensorEventListener {
     override fun onAccuracyChanged(s: Sensor?, accuracy: Int) {}
 
     override fun onSensorChanged(e: SensorEvent) {
+        if (e.sensor == gravitySensor) {
+            val prior = fallbackUp
+            val alpha = if (prior != null && e.sensor.type == Sensor.TYPE_ACCELEROMETER) .15f else 1f
+            val (x,y,z) = e.values
+            val norm = sqrt(x*x+y*y+z*z)
+            if (norm !in 6f..14f) return
+            val up = FloatArray(3) { i -> (prior?.get(i) ?: 0f) * (1-alpha) + alpha * e.values[i]/norm }
+            fallbackUp = up
+            return
+        }
         val rotation = FloatArray(9)
         SensorManager.getRotationMatrixFromVector(rotation, e.values)
         synchronized(history) {
@@ -57,6 +73,16 @@ class Pose(ctx: Context) : SensorEventListener {
                     history.minByOrNull { abs(it.timestamp - timestampNs) }?.rotation
                 }
         return device?.let { displayAxes(it, rotation) }
+    }
+
+    internal fun level(rotation: Int): LevelReading? {
+        axes(rotation)?.let { return levelReading(it) }
+        val up = fallbackUp ?: return null
+        val norm = sqrt(up.sumOf { (it*it).toDouble() }).toFloat()
+        if (norm < .25f) return null
+        val basis = FloatArray(9)
+        for (i in up.indices) basis[6+i] = up[i]/norm
+        return levelReading(displayAxes(basis, rotation))
     }
 }
 
@@ -154,6 +180,8 @@ data class FinderPoint(val x: Double, val y: Double) {
         }
 }
 
+data class StartMark(val center: FinderPoint, val right: FinderPoint)
+
 data class ScanGuide(
     val captures: Int,
     val coverage: Double,
@@ -164,6 +192,11 @@ data class ScanGuide(
     val mapTurn: Int,
     val homeDirection: FinderPoint?,
     val settling: Boolean,
+    val startMark: StartMark? = null,
+    val startRollRadians: Double? = null,
+    val startPitchRadians: Double? = null,
+    val startOverhead: Boolean = false,
+    val lowLight: Boolean = false,
 )
 
 internal data class ScanWarp(val a: Double = 1.0, val b: Double = 0.0,
@@ -187,7 +220,10 @@ internal data class ScanWarp(val a: Double = 1.0, val b: Double = 0.0,
 }
 
 internal fun interface ScanAligner {
+    val rawReferences: Boolean get() = false
     fun align(w: Int, h: Int, reference: ByteArray, incoming: ByteArray, mask: ByteArray): ScanWarp?
+    fun candidates(w: Int, h: Int, reference: ByteArray, incoming: ByteArray, mask: ByteArray): Sequence<ScanWarp> =
+        sequence { align(w,h,reference,incoming,mask)?.let { yield(it) } }
 }
 
 internal class Mosaic(
@@ -197,6 +233,8 @@ internal class Mosaic(
     private val response: DoubleArray = defaultResponse,
     private val aligner: ScanAligner? = null,
 ) {
+    private val references = if (aligner?.rawReferences==true) ScanReferences() else null
+    fun close() { references?.close() }
     private val bounds = Field(target.x * MARGIN, target.y * MARGIN)
     val w = max(1, (LONG_EDGE * min(1.0, bounds.aspect)).roundToInt())
     val h = max(1, (LONG_EDGE * min(1.0, 1 / bounds.aspect)).roundToInt())
@@ -385,8 +423,8 @@ internal class Mosaic(
 
     // Warp the existing atlas into the incoming camera coordinates first. Native
     // optical flow now only needs to solve the residual left by the rotation sensor.
-    private fun alignOverlap(frame: Frame, source: Field, rotation: DoubleArray): ScanWarp? {
-        val native = aligner ?: return null
+    private fun alignOverlap(frame: Frame, source: Field, rotation: DoubleArray): Sequence<ScanWarp> {
+        val native = aligner ?: return emptySequence()
         val scale = min(1.0,256.0/max(frame.w,frame.h))
         val width = max(1,(frame.w*scale).roundToInt())
         val height = max(1,(frame.h*scale).roundToInt())
@@ -412,8 +450,9 @@ internal class Mosaic(
                 mask[i] = -1
             }
         }
-        val fit = native.align(width,height,reference,current,mask) ?: return null
-        return fit.copy(tx=fit.tx*frame.w/width,ty=fit.ty*frame.h/height,width=frame.w,height=frame.h)
+        return native.candidates(width,height,reference,current,mask).map { fit ->
+            fit.copy(tx=fit.tx*frame.w/width,ty=fit.ty*frame.h/height,width=frame.w,height=frame.h)
+        }
     }
 
     // Test the final warp before mutating the atlas. Compare local structure rather
@@ -445,6 +484,7 @@ internal class Mosaic(
             if (max(va,vb) < 36*n) continue
             if (ab-a*b/n > .55*sqrt(max(0.0,va*vb))) good++ else bad++
         }
+        lastOverlapChecks.add("good=$good bad=$bad a=${warp.a} b=${warp.b} tx=${warp.tx} ty=${warp.ty}")
         return bad < 4 || good >= 2*bad
     }
 
@@ -497,10 +537,16 @@ internal class Mosaic(
         } }
     }
 
+    var lastDecision: String = "not_attempted"
+        private set
+    val lastOverlapChecks = mutableListOf<String>()
+
     fun add(frame: Frame, source: Field, pose: FloatArray) = add(source,pose) { frame }
 
     fun add(source: Field, pose: FloatArray, requireVisual: Boolean = false, decode: () -> Frame): Boolean {
-        if (ready) return false
+        lastDecision = "accepted"
+        lastOverlapChecks.clear()
+        if (ready) { lastDecision = "ready"; return false }
         val rotation = relative(pose,center)
         // Reject disconnected islands. A sample grid over the atlas checks geometric
         // overlap before feature matching, including in low-texture scenes.
@@ -530,7 +576,7 @@ internal class Mosaic(
                 }
                 if (outside == 0) { addsArea = true; break }
             }
-            if (!addsArea) return true
+            if (!addsArea) { lastDecision = "no_new_area"; return true }
             val stride = max(1,min(w,h)/64)
             outer@ for (y in 0 until h step stride) for (x in 0 until w step stride) {
                 if (atlas[y*w+x] == 0) continue
@@ -543,16 +589,27 @@ internal class Mosaic(
                     break@outer
                 }
             }
-            if (!overlap) return false
+            if (!overlap) { lastDecision = "no_overlap"; return false }
         }
         val frame = decode()
-        if (frame.id != initial.id) return false
-        val p = Projection(rotation,source,frame.w,frame.h)
+        if (frame.id != initial.id) { lastDecision = "camera_changed"; return false }
+        val rawPlacement = references?.estimate(frame,source,rotation)
+        references?.validation?.let(lastOverlapChecks::add)
+        val placement = rawPlacement ?: rotation
+        val p = Projection(placement,source,frame.w,frame.h)
         val gain = gains(frame.cameraEv - initial.cameraEv)
-        val nativeFit = if (count > 0) alignOverlap(frame,source,rotation) else null
-        if (count > 0 && requireVisual && nativeFit == null) return false
+        var hadVisualFit = false
+        val nativeFit = if (rawPlacement!=null) ScanWarp() else if (count > 0) alignOverlap(frame,source,rotation).firstOrNull {
+            hadVisualFit = true
+            overlapAgrees(frame,p,it)
+        } else null
+        if (count > 0 && requireVisual && nativeFit == null) {
+            lastDecision = if (hadVisualFit) "overlap_disagrees" else "visual_fit_missing"
+            return false
+        }
         val warp = nativeFit ?: register(frame,p,gain).let { (x,y) -> ScanWarp(tx=x.toDouble(),ty=y.toDouble()) }
-        if (count > 0 && !overlapAgrees(frame,p,warp)) return false
+        if (count > 0 && nativeFit == null && !overlapAgrees(frame,p,warp)) { lastDecision = "overlap_disagrees"; return false }
+        if (count==0 || rawPlacement!=null) references?.retain(placement)
         val residual = overlapGains(frame,p,warp,gain)
         val feather = max(2.0,min(frame.w,frame.h)*.14)
         for (y in ys.indices) for (x in xs.indices) {
@@ -603,6 +660,21 @@ internal class Mosaic(
             confidence[j] = weight
         }
         return true
+    }
+
+    // Project the initial camera ray into the live crop. Its tangent along the
+    // initial camera X axis preserves the framing's roll, even in a top-down scan.
+    fun startMark(pose: FloatArray, turn: Int): StartMark? {
+        val r = relative(pose, center)
+        val z = r[8]
+        if (z <= .001) return null
+        val p = FinderPoint(.5 - .5*r[2]/(z*target.x), .5 + .5*r[5]/(z*target.y))
+        if (p.x !in 0.0..1.0 || p.y !in 0.0..1.0) return null
+        val dx = (r[0]*z - r[2]*r[6])/target.x
+        val dy = -(r[3]*z - r[5]*r[6])/target.y
+        val right = FinderPoint(p.x + dx,p.y + dy).turned(turn)
+        val projected = p.turned(turn)
+        return StartMark(projected, FinderPoint(right.x - projected.x,right.y - projected.y))
     }
 
     fun homeDirection(pose: FloatArray): FinderPoint? {
@@ -658,9 +730,11 @@ internal class Mosaic(
 // A scan keeps the display axes that were in use when the center was confirmed.
 // Its atlas and angular reference remain valid if Android rotates the window.
 internal class ScanSession(center: Frame, target: Field, origin: FloatArray?, response: DoubleArray,
-                           private val aligner: ScanAligner? = null) {
+                           private val aligner: ScanAligner? = null,
+                           private val startLevel: LevelReading? = origin?.let(::levelReading)) {
     private val identity = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
     private val mosaic = Mosaic(target, identity, center, response, aligner)
+    fun close() = mosaic.close()
     private var orientation = identity
     private var sensorOrigin = origin
     private var originPose = identity
@@ -678,6 +752,8 @@ internal class ScanSession(center: Frame, target: Field, origin: FloatArray?, re
     private var settling = true
     private var renderedPose: FloatArray? = null
     private var rendered: Frame? = null
+    val lastCandidateDecision get() = mosaic.lastDecision
+    val lastCandidateChecks get() = mosaic.lastOverlapChecks.toList()
 
     private fun moved(a: FloatArray, b: FloatArray, degrees: Double): Boolean {
         var trace = 0.0
@@ -734,11 +810,15 @@ internal class ScanSession(center: Frame, target: Field, origin: FloatArray?, re
         // stationary interval. Small frame-to-frame movement permits a fresh candidate.
         val retry = retryStationary && elapsed in 1..500 &&
             !moved(previousOrientation,orientation,1.5) && nowMs-attemptedAt >= 160
-        val continuous = aligner != null && (sharp || retry)
+        // A long exposure can suppress every sharp-frame attempt during a sweep.
+        // Periodically validate an intermediate view against original keyframes.
+        val bridge = aligner?.rawReferences == true && lastAttempt != null &&
+            nowMs-attemptedAt >= 150 && (retryStationary || moved(lastAttempt!!,orientation,2.0))
+        val continuous = aligner != null && (sharp || retry || bridge)
         settling = !stationary && !continuous && lastAttempt != null
         val step = if (mosaic.coverage >= .90) .45 else if (stationary) 1.0 else Math.toDegrees(atan(min(field.x,field.y)))*.14
         if (!mosaic.ready && !lost && (stationary || continuous || (aligner != null && accepted == 0 && lastAttempt == null)) &&
-            (lastAttempt == null || moved(lastAttempt!!,orientation,step) || (retryStationary && ((stationary && nowMs-attemptedAt >= 220) || (continuous && nowMs-attemptedAt >= 110))))) {
+            (lastAttempt == null || bridge || moved(lastAttempt!!,orientation,step) || (retryStationary && ((stationary && nowMs-attemptedAt >= 220) || (continuous && nowMs-attemptedAt >= 110))))) {
             val before = mosaic.coverage
             // If moving registration is unreliable, allow a stationary retry at this pose.
             disconnected = !mosaic.add(field,orientation,!stationary,::image)
@@ -764,8 +844,18 @@ internal class ScanSession(center: Frame, target: Field, origin: FloatArray?, re
             val p = FinderPoint(.5 + .5*it.x,.5 + .5*it.y).turned(displayTurn)
             FinderPoint(2*p.x-1,2*p.y-1)
         }
+        val initialLevel = startLevel?.let {
+            when (Math.floorMod(displayTurn,360)) {
+                90 -> LevelReading(it.upY,-it.upX,it.upZ)
+                180 -> LevelReading(-it.upX,-it.upY,it.upZ)
+                270 -> LevelReading(-it.upY,it.upX,it.upZ)
+                else -> it
+            }
+        }
         return ScanGuide(accepted,mosaic.coverage,aim.turned(displayTurn),
-            nextTarget?.turned(displayTurn),lost || disconnected,mosaic.tileCoverage(),displayTurn,home,settling)
+            nextTarget?.turned(displayTurn),lost || disconnected,mosaic.tileCoverage(),displayTurn,home,settling,
+            startMark = mosaic.startMark(orientation,displayTurn), startRollRadians = initialLevel?.rollRadians,
+            startPitchRadians = initialLevel?.pitchRadians, startOverhead = initialLevel?.overhead == true)
     }
 }
 
