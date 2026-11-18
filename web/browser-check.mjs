@@ -506,7 +506,8 @@ try {
   await page.locator("#focal").dispatchEvent("change");
   await expect(page.locator("#scan-start")).toBeVisible();
   await page.locator("#scan-start").click();
-  await expect(page.locator("#scan-panel")).toBeVisible();
+  // The deployed site can spend up to 20 s loading the worker on first use.
+  await expect(page.locator("#scan-panel")).toBeVisible({ timeout: 25000 });
   await expect(page.locator("#scan-status")).toContainText("覆盖");
   await page.locator("#scan-finish").click();
   await expect(page.locator("#scan-status")).toContainText("二次构图");
@@ -819,6 +820,7 @@ try {
   await expect(phone.locator("#setup-aperture")).toHaveValue("");
   await expect(phone.locator("#setup-equivalent")).toHaveValue("");
   await expect(phone.locator('#setup-phone option[value^="samsung-"]')).toHaveCount(0);
+  await expect(phone.locator('#setup-phone option[value^="apple-iphone-"]')).toHaveCount(38);
   await expect(phone.locator('#setup-phone option[value="apple-iphone-x"]')).toHaveText("iPhone X");
   await expect(phone.locator('#setup-phone option[value="apple-iphone-xs-max"]')).toHaveText("iPhone XS Max");
   await expect(phone.locator('#setup-phone option[value="apple-iphone-13-mini"]')).toHaveText("iPhone 13 mini");
@@ -833,6 +835,14 @@ try {
   await phone.locator("#setup-lens").selectOption("telephoto");
   await expect(phone.locator("#setup-equivalent")).toHaveValue("77");
   await phone.screenshot({ path: path.join(snapshots, "lens-brand-iphone.png") });
+  await phone.locator("#setup-phone").selectOption("apple-iphone-18-pro-max");
+  await phone.locator("#setup-lens").selectOption("wide");
+  await expect(phone.locator("#setup-equivalent")).toHaveValue("24");
+  await expect(phone.locator("#setup-aperture")).toHaveValue("1.48");
+  await expect(phone.locator("#setup-source-note")).toContainText("可变光圈");
+  await phone.locator("#setup-phone").selectOption("apple-iphone-duo");
+  await phone.locator("#setup-lens").selectOption("ultrawide");
+  await expect(phone.locator("#setup-equivalent")).toHaveValue("13");
   await phone.locator("#setup-brand").selectOption("Xiaomi");
   await expect(phone.locator("#setup-phone")).toHaveValue("");
   await expect(phone.locator("#setup-lens")).toBeDisabled();

@@ -204,11 +204,16 @@ async function dismissNotice(page) {
   if (await page.locator("#notice").isVisible()) await page.locator("#notice-ok").click();
 }
 
+async function startCollecting(page) {
+  await page.locator("#scan-start").click();
+  // On the deployed site, the first worker needs time to fetch OpenCV.
+  await check(page.locator("#scan-panel")).toBeVisible({ timeout: 25000 });
+}
+
 async function poseScan() {
   const { context, page } = await openCamera();
   try {
-    await page.locator("#scan-start").click();
-    await check(page.locator("#scan-panel")).toBeVisible();
+    await startCollecting(page);
     await check.poll(async () => (await counts(page)).accepted).toBe(1);
     await check(page.locator("#scan-level")).toContainText("起点");
     await check(page.locator("#coverage-map")).toHaveAttribute("aria-label", /十字为起点，白圈为当前方向/);
@@ -384,7 +389,7 @@ async function continuousScan() {
     await page.locator('[data-close="settings"]').click();
     await page.locator("#focal").fill("20");
     await page.locator("#focal").dispatchEvent("change");
-    await page.locator("#scan-start").click();
+    await startCollecting(page);
     await check.poll(async () => (await counts(page)).accepted).toBe(1);
     const before = await counts(page);
     await orient(page, 0, .3);
@@ -433,8 +438,7 @@ async function continuousScan() {
 async function fallbackScan() {
   const { context, page } = await openCamera({ sensor: false });
   try {
-    await page.locator("#scan-start").click();
-    await check(page.locator("#scan-panel")).toBeVisible();
+    await startCollecting(page);
     await check.poll(async () => (await counts(page)).accepted).toBe(1);
     await check(page.locator("#scan-status")).toContainText("图像配准");
     await check(page.locator("#scan-level")).toBeHidden();
@@ -510,8 +514,7 @@ async function preparationRaceScan() {
     // same track, then let the stale A finish after B is already collecting.
     await page.locator("#focal").fill("10");
     await page.locator("#focal").dispatchEvent("change");
-    await page.locator("#scan-start").click();
-    await check(page.locator("#scan-panel")).toBeVisible();
+    await startCollecting(page);
     await check.poll(async () => (await counts(page)).accepted).toBe(1);
     await check(page.locator("#scan-status")).toHaveAttribute("data-exposure-locked", "true");
     await check(page.locator("#scan-status")).toHaveAttribute("data-white-balance-locked", "true");
@@ -551,7 +554,7 @@ async function unavailableEngineScan() {
 async function englishScan() {
   const { context, page } = await openCamera({ language: "en" });
   try {
-    await page.locator("#scan-start").click();
+    await startCollecting(page);
     await check.poll(async () => (await counts(page)).accepted).toBe(1);
     await check(page.locator("#scan-status")).toContainText("Capturing continuously");
     expect(await page.locator("#scan-status").textContent()).not.toMatch(/[\u3400-\u9fff]/);
