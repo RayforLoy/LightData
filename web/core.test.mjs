@@ -267,10 +267,30 @@ test("published reciprocity formula, discrete table and unknown values keep the 
   assert.equal(reciprocity("FOMAPAN 100 Classic", 10).seconds, 80);
   assert.equal(reciprocity("FOMAPAN 100 Classic", 11).seconds, null);
   assert.equal(reciprocity("PORTRA 400", 1).seconds, 1);
-  assert.equal(reciprocity("PORTRA 400", 60).seconds, null);
+  const portra = reciprocity("PORTRA 400", 60);
+  approx(portra.seconds, 60 ** 1.3);
+  assert.equal(portra.network, true);
+  assert.equal(portra.extrapolated, true);
+  assert.match(portra.source, /metergeist\.com/);
   assert.ok(reciprocity("EKTACHROME E100", 120).note.includes("CC10R"));
   for (const t of [0, -1, Infinity, NaN, Number.MAX_VALUE])
     assert.equal(reciprocity("HP5 PLUS", t).seconds, null);
+});
+
+test("exact film names, manual priority and anchored network interpolation", () => {
+  assert.equal(reciprocity("PRO 160S", 2).seconds, 2);
+  assert.match(reciprocity("PRO 160S", 4).note, /1\/3/);
+  assert.match(reciprocity("PRO 160S", 5).note, /不建议/);
+  assert.equal(reciprocity("VELVIA 100", 60).network, undefined);
+  assert.match(reciprocity("VELVIA 100", 120).note, /2\.5M/);
+  const gap = reciprocity("VELVIA 100", Math.sqrt(60 * 120));
+  approx(gap.seconds, Math.sqrt(60 * 152));
+  assert.equal(gap.extrapolated, false);
+  assert.equal(gap.network, true);
+  assert.equal(reciprocity("PORTRA 400 custom", 60).seconds, null);
+  assert.equal(reciprocity("toString", 60).seconds, null);
+  assert.match(reciprocity("Phoenix II", 10).source, /harmanphoto\.co\.uk/);
+  assert.equal(reciprocity("Phoenix II", 55).extrapolated, true);
 });
 
 test("custom JSON roundtrip is Android compatible, UUID merge is stable and invalid imports are atomic", () => {

@@ -59,7 +59,7 @@ async function openCamera({ sensor = true, language = "zh-CN" } = {}) {
     const original = MediaStreamTrack.prototype.getSettings;
     MediaStreamTrack.prototype.getSettings = function () {
       return { ...original.call(this), deviceId: "lightdata-panorama-camera",
-        exposureMode: "continuous", exposureTime: 100, iso: 100 };
+        exposureMode: "continuous", exposureTime: globalThis.testExposureTime ?? 100, iso: 100 };
     };
     if (!sensor) delete window.DeviceOrientationEvent;
     else if (typeof DeviceOrientationEvent.requestPermission === "function")
@@ -210,6 +210,12 @@ async function poseScan() {
     await page.locator("#scan-start").click();
     await check(page.locator("#scan-panel")).toBeVisible();
     await check.poll(async () => (await counts(page)).accepted).toBe(1);
+    await check(page.locator("#scan-level")).toContainText("起点");
+    await check(page.locator("#coverage-map")).toHaveAttribute("aria-label", /十字为起点，白圈为当前方向/);
+    await page.evaluate(() => { globalThis.testExposureTime = 400; });
+    await check(page.locator("#scan-low-light")).toBeVisible();
+    await page.evaluate(() => { delete globalThis.testExposureTime; });
+    await check(page.locator("#scan-low-light")).toBeHidden();
     await check.poll(async () => (await pixels(page)).lit).toBeGreaterThan(.02);
     const center = await pixels(page);
     expect(center.lit).toBeGreaterThan(.02);
@@ -431,6 +437,7 @@ async function fallbackScan() {
     await check(page.locator("#scan-panel")).toBeVisible();
     await check.poll(async () => (await counts(page)).accepted).toBe(1);
     await check(page.locator("#scan-status")).toContainText("图像配准");
+    await check(page.locator("#scan-level")).toBeHidden();
     await check.poll(async () => (await counts(page)).trackingDecode).toBeGreaterThan(1);
     const tracked = await counts(page);
     expect(tracked.analysisEdges).toContain(160);

@@ -12,6 +12,7 @@ const mime = {
   ".css": "text/css",
   ".json": "application/json",
   ".png": "image/png",
+  ".mp3": "audio/mpeg",
 };
 const server = http.createServer(async (req, res) => {
   try {
@@ -93,8 +94,137 @@ async function valueReading() {
     .textContent()
     .then((v) => Number.parseFloat(v));
 }
+async function openMore() {
+  await page.locator("#more-toggle").click();
+  await expect(page.locator("#more")).toBeVisible();
+}
+const closeMore = () => page.locator("[data-close=more]").click();
+const changeNumber = async (id, value) => {
+  await page.locator(id).fill(String(value));
+  await page.locator(id).dispatchEvent("change");
+};
+const shutterSeconds = async () => {
+  const text = await page.locator("#exposure-table button.active span").first().textContent();
+  return text.includes("/") ? 1 / Number(text.split("/")[1]) : parseFloat(text);
+};
+
+async function checkMoreTools() {
+  await page.evaluate(() => {
+    window.dispatchEvent(new DeviceOrientationEvent("deviceorientation", { beta: 90, gamma: 0 }));
+  });
+  await expect(page.locator("#finder-level")).toBeVisible();
+  const original = await shutterSeconds();
+  const originalLimits = await page.locator("#thresholds").textContent();
+  await openMore();
+  await expect(page.locator("#level-enabled")).toBeChecked();
+  await page.locator("#level-enabled").uncheck();
+  await expect(page.locator("#finder-level")).toBeHidden();
+  await page.locator("#level-enabled").check();
+  await changeNumber("#filter-factor", 4);
+  await expect(page.locator("#filter-stops")).toHaveValue("2");
+  await changeNumber("#bellows-draw", 70);
+  await expect(page.locator("#loss-info")).toHaveText("总光损 +4 EV");
+  await page.screenshot({ path: path.join(snapshots, "more-optical-loss.png") });
+  expect(Math.abs(Math.log2(await shutterSeconds() / original) - 4)).toBeLessThan(.4);
+  const correctedLimit = (await page.locator("#thresholds").textContent()).match(/[\d.]+/g).map(Number);
+  expect(Math.abs(correctedLimit[0] - Number(originalLimits.match(/[\d.]+/)[0]))).toBeLessThanOrEqual(.3);
+  await changeNumber("#filter-stops", 0);
+  await changeNumber("#bellows-draw", 0);
+
+  await page.locator("#framing-tools summary").click();
+  await page.locator("#snapshot-save").click();
+  await expect(page.locator("#snapshot-list > div")).toHaveCount(1);
+  await page.locator("#snapshot-list > div > button").first().click();
+  await expect(page.locator("#framing-overlay img")).toBeVisible();
+  await expect.poll(() => page.locator("#framing-overlay img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+  await openMore();
+  await page.locator("#overlay-opacity").fill("60");
+  await expect(page.locator("#framing-overlay")).toHaveCSS("opacity", "0.6");
+  await page.locator("#snapshot-hide").click();
+  await expect(page.locator("#framing-overlay")).toBeHidden();
+
+  await page.locator("#meter-sound").uncheck();
+  await page.locator("#meter-sound-file").setInputFiles(path.join(root, "audio", "sony_focus.mp3"));
+  await expect(page.locator("#toast")).toContainText("已保存测光确认音");
+  await page.locator("#meter-sound-restore").click();
+  await expect(page.locator("#notice-text")).toContainText("iainmccurdy");
+  await expect(page.locator("#notice-link")).toHaveAttribute("href", /freesound\.org.*613889/);
+  await notice();
+  await closeMore();
+  await page.locator("#single").click();
+  expect(await page.evaluate(() => globalThis.lastMeterSound)).toBeUndefined();
+  await openMore();
+  await page.locator("#meter-sound").check();
+  await closeMore();
+  await page.locator("#single").click();
+  await expect.poll(() => page.evaluate(() => globalThis.lastMeterSound)).toMatch(/\/audio\/sony_focus\.mp3$/);
+  const bundled = await page.request.get(new URL("audio/sony_focus.mp3", base).href);
+  expect(bundled.ok()).toBe(true);
+  expect((await bundled.body()).length).toBe(9408);
+  await page.locator("#continuous").click();
+
+  await page.locator("#spots-toggle").click();
+  await notice();
+  await page.locator("#view").click();
+  await expect(page.locator("#spots .spot")).toHaveCount(1);
+  await page.locator("#spot-list button").first().click();
+  await page.locator("#placement-zones").getByRole("button", { name: "VIII", exact: true }).click();
+  await expect(page.locator("#exposure-table-label")).toHaveText("点 1 → Zone VIII");
+  expect(await shutterSeconds()).toBeGreaterThan(original * 2);
+  await page.locator("#spot-list button").first().click();
+  await page.locator("#placement-clear").click();
+  await expect(page.locator("#exposure-table-label")).toHaveText("等效曝光");
+  expect(await shutterSeconds()).toBe(original);
+
+  await openMore();
+  await page.locator("#ground-tools summary").click();
+  await expect(page.locator("#ground-reference option").first()).toContainText("点 1");
+  await page.locator("#ground-delay").selectOption("3");
+  await page.locator("#ground-calibrate").click();
+  await expect(page.locator("#ground-capture")).toBeVisible();
+  await expect(page.locator("#ground-profile")).toContainText("已校准", { timeout: 8500 });
+  await expect(page.locator("#ground-capture")).toBeHidden();
+  await page.locator("#ground-measure").click();
+  await page.locator("#ground-abort").click();
+  await expect(page.locator("#ground-result")).toBeEmpty();
+  const before = await valueReading();
+  await page.evaluate(() => { globalThis.testCameraSettings.iso = 400; });
+  await expect.poll(valueReading).toBeLessThan(before - 1.8);
+  await page.locator("#ground-measure").click();
+  await expect(page.locator("#ground-result")).toContainText("EV100", { timeout: 8500 });
+  await page.evaluate(() => { globalThis.testCameraSettings.iso = 100; });
+  await expect.poll(valueReading).toBeGreaterThan(before - .2);
+  await page.locator("#ground-compare").click();
+  await expect(page.locator("#ground-pair")).toBeVisible();
+  await page.locator("#view").click();
+  await expect(page.locator("#ground-confirm")).toBeVisible();
+  await page.screenshot({ path: path.join(snapshots, "ground-pair.png") });
+  await page.locator("#ground-apply").click();
+  await expect(page.locator("#ground-pair")).toBeHidden();
+  await openMore();
+  await expect(page.locator("#loss-source")).toHaveValue("measured");
+  expect(Math.abs(parseFloat((await page.locator("#loss-info").textContent()).split("+")[1]) - 2)).toBeLessThan(.15);
+  await page.locator("#loss-source").selectOption("geometric");
+  await closeMore();
+
+  await settings();
+  await page.locator("#film-select").selectOption({ label: "PORTRA 400 · ISO 400" });
+  await close();
+  await page.evaluate(() => {
+    Object.assign(globalThis.testCameraSettings, { exposureTime: 10000, iso: 6400 });
+  });
+  await expect(page.locator("#dim-meter")).toBeVisible();
+  await expect(page.locator("#reciprocity-note")).toContainText("数据来源网络");
+  await expect(page.locator("#reciprocity-source")).toHaveAttribute("href", /metergeist\.com/);
+  await page.evaluate(() => {
+    Object.assign(globalThis.testCameraSettings, { exposureTime: 100, iso: 100 });
+  });
+  await expect(page.locator("#dim-meter")).toBeHidden();
+}
 try {
   await page.addInitScript(() => {
+    if (typeof DeviceOrientationEvent.requestPermission === "function")
+      DeviceOrientationEvent.requestPermission = async () => "granted";
     if (!localStorage.getItem("lightdata.web.v1")) {
       // A legacy browser stored linear as the old default, with no scale version.
       localStorage.setItem("lightdata.web.v1", JSON.stringify({ log: false }));
@@ -110,6 +240,14 @@ try {
         ...globalThis.testCameraSettings,
       };
     };
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      if (this instanceof HTMLAudioElement) {
+        globalThis.lastMeterSound = this.src;
+        return Promise.resolve();
+      }
+      return play.call(this);
+    };
   });
   await page.goto(base);
   await expect(page.locator("#film-select option")).toHaveCount(168);
@@ -117,7 +255,7 @@ try {
   await expect(page.locator("#pixel-label")).toHaveText("像素 log");
   await expect(page.locator(".toolbar a[href*=releases]")).toHaveAttribute(
     "href",
-    /releases\/tag\/0\.1\.11-beta$/,
+    /releases\/tag\/0\.2\.0-beta$/,
   );
   await expect(page.locator("#camera-setup")).toBeVisible();
   await expect(page.locator("#setup-brand")).toHaveValue("");
@@ -252,6 +390,9 @@ try {
   await page.waitForTimeout(850);
   expect(await page.locator("#exposure-table").textContent()).toBe(held);
   await page.locator("#continuous").click();
+  // Reset the sound monitor after the separate continuous/single metering check.
+  await page.evaluate(() => { delete globalThis.lastMeterSound; });
+  await checkMoreTools();
   await expect
     .poll(() => page.locator("#exposure-table").textContent())
     .not.toBe(held);
@@ -430,6 +571,15 @@ try {
   await page.locator("#start-camera").click();
   await expect(page.locator("#live-state")).toContainText("LIVE");
   await expect(page.locator("#image-frame")).toBeVisible();
+  await openMore();
+  await page.locator("#ground-tools summary").click();
+  await expect(page.locator("#ground-profile")).toContainText("已校准");
+  await page.locator("#framing-tools summary").click();
+  await expect(page.locator("#snapshot-list > div")).toHaveCount(1);
+  await expect(page.locator("#overlay-opacity")).toHaveValue("60");
+  await page.locator("#snapshot-list > div > button").last().click();
+  await expect(page.locator("#snapshot-list > div")).toHaveCount(0);
+  await closeMore();
   await settings();
   await expect(page.locator("#capture-mode")).toHaveValue("auto");
   await expect(page.locator("#capture-aperture")).toHaveValue("2.3");
@@ -796,6 +946,17 @@ try {
   await expect(english.locator("#setup-aperture")).toHaveValue("2.3");
   await english.locator("#setup-close").click();
   await expect(english.locator("#settings")).toBeVisible();
+  await english.locator("[data-close=settings]").click();
+  await english.locator("#more-toggle").click();
+  await expect(english.locator("#more-title")).toHaveText("More");
+  await expect(english.locator("#loss-info")).toHaveText("Total light loss +0 EV");
+  await english.locator("#ground-tools summary").click();
+  await expect(english.locator("#ground-profile")).toContainText("no ground glass calibration");
+  await english.setViewportSize({ width: 320, height: 700 });
+  await expect.poll(() => english.locator("#more").evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
+  await english.screenshot({ path: path.join(snapshots, "more-english-320.png") });
+  await english.locator("[data-close=more]").click();
+  await english.setViewportSize({ width: 430, height: 932 });
   const untranslated = await english.evaluate(() => {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const remaining = [];
@@ -811,7 +972,6 @@ try {
     return remaining;
   });
   expect(untranslated).toEqual([]);
-  await english.locator("[data-close=settings]").click();
   for (const [width, height] of [[430, 932], [768, 1024], [1366, 768]]) {
     await english.setViewportSize({ width, height });
     await expect.poll(() => english.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -839,7 +999,7 @@ try {
   await englishContext.close();
   expect(errors).toEqual([]);
   console.log(
-    "Browser checks passed: logarithmic default and legacy migration, settings reset preserving optics/calibrations/presets, explicit linear choice persistence, first-use lens setup, per-camera optics/zoom/reload, linked brand/model selectors and restored selections, individual iPhones from X onward, expanded sourced phone/lens presets, bilingual browser-language defaults and saved overrides, highlighted lens setup, camera, changing AE, relative fallback, single reading, film ISO lock, 2 spots, touch pan/pinch, panorama/reframe, custom frame/JSON persistence, four layouts, split drag, reference expiry, background pause/resume, denied permission.",
+    "Browser checks passed: lens setup, optics/presets/calibration persistence, brand/model selection, all iPhones from X onward, bilingual UI, continuous/single and relative metering, ISO lock, zone placement, filter/bellows and ground glass compensation, framing overlays, level, confirmation sound and credit, low light and reciprocity source, histogram gestures, panoramas, four layouts, background pause/resume and permission denial.",
   );
   console.log("Screenshots:", snapshots);
 } catch (error) {

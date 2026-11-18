@@ -1,6 +1,6 @@
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
-import { Camera, captureExposure } from "./camera.js";
+import { Camera, captureExposure, fasterScanExposure } from "./camera.js";
 
 const originalDocument = globalThis.document;
 before(() => {
@@ -94,6 +94,31 @@ test("locks both channels using actual API units, retains video constraints and 
   assert.equal(track.actual.iso, 125);
   assert.equal(track.actual.colorTemperature, 5250);
   assert.equal(track.readyState, "live");
+});
+
+test("scan shutter gets faster within ISO range and preserves the exposure product", () => {
+  const limits = capabilities();
+  assert.deepEqual(fasterScanExposure({ exposureTime: 400, iso: 100 }, limits), { exposureTime: 100, iso: 400 });
+  assert.deepEqual(fasterScanExposure({ exposureTime: 300, iso: 1600 }, limits), { exposureTime: 150, iso: 3200 });
+  assert.equal(fasterScanExposure({ exposureTime: 300, iso: 3200 }, limits), null);
+  assert.equal(fasterScanExposure({ exposureTime: 105, iso: 100 }, limits), null);
+  assert.equal(fasterScanExposure({ exposureTime: 300 }, limits), null);
+});
+
+test("a rejected faster shutter falls back to a verified original AE hold", async () => {
+  const { camera, track, calls } = fakeCamera({
+    settings: { exposureTime: 400, iso: 200 },
+    beforeApply(request) {
+      if (flatConstraints(request).exposureTime === 100) throw new Error("Device does not support this combination");
+    },
+  });
+  const lock = await camera.lockForPanorama({ preferFaster: true });
+  assert.equal(flatConstraints(calls[0]).iso, 800);
+  assert.equal(flatConstraints(calls[1]).exposureTime, 400);
+  assert.equal(lock.exposureLocked, true);
+  assert.equal(track.actual.exposureTime, 400);
+  await lock.release();
+  assert.equal(track.actual.exposureMode, "continuous");
 });
 
 test("reports quantized actual values instead of fabricating requested metadata", async () => {

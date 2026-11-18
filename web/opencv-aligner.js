@@ -134,16 +134,20 @@ export function alignOverlap(cv, reference, incoming, mask, width, height) {
           !safeMask.data[Math.floor(v) * width + Math.floor(u)] || Math.hypot(bx - x, by - y) >= 1.2) continue;
       points.push({ x, y, u, v });
     }
-    const required = Math.max(7, Math.ceil(.65 * points.length));
-    if (points.length < required) return null;
-    const from = own(cv.matFromArray(points.length, 1, cv.CV_32FC2, points.flatMap(p => [p.x, p.y])));
-    const to = own(cv.matFromArray(points.length, 1, cv.CV_32FC2, points.flatMap(p => [p.u, p.v])));
+    if (points.length < 7) return null;
+    // Reserve points across the corner list when overlap has enough support.
+    // The fit must agree with tracks that never participated in RANSAC.
+    const heldOut = points.length >= 16 ? points.filter((_, i) => i % 4 === 0) : [];
+    const training = heldOut.length ? points.filter((_, i) => i % 4 !== 0) : points;
+    const required = Math.max(7, Math.ceil(.65 * training.length));
+    const from = own(cv.matFromArray(training.length, 1, cv.CV_32FC2, training.flatMap(p => [p.x, p.y])));
+    const to = own(cv.matFromArray(training.length, 1, cv.CV_32FC2, training.flatMap(p => [p.u, p.v])));
     const inlierMask = own(new cv.Mat());
     const model = own(cv.estimateAffinePartial2D
       ? cv.estimateAffinePartial2D(from, to, inlierMask, cv.RANSAC, REPROJECTION, 2000, .995, 10)
       : cv.findHomography(from, to, cv.RANSAC, REPROJECTION, inlierMask, 2000, .995));
-    if (!model || model.empty() || inlierMask.data.length !== points.length) return null;
-    let inliers = points.filter((_, i) => inlierMask.data[i]);
+    if (!model || model.empty() || inlierMask.data.length !== training.length) return null;
+    let inliers = training.filter((_, i) => inlierMask.data[i]);
     if (inliers.length < required) return null;
     // The homography is only an outlier selector. Refit strictly a similarity,
     // then reject points that only agreed with a projective / shearing model.
@@ -156,6 +160,14 @@ export function alignOverlap(cv, reference, incoming, mask, width, height) {
     }
     similarity = fitSimilarity(inliers);
     if (!similarity || !Object.values(similarity).every(Number.isFinite)) return null;
+    if (heldOut.length) {
+      const verified = heldOut.filter(point => residual(point, similarity) <= REPROJECTION);
+      if (verified.length < Math.ceil(.6 * heldOut.length)) return null;
+      inliers = inliers.concat(verified);
+      if (inliers.length < Math.ceil(.65 * points.length)) return null;
+      similarity = fitSimilarity(inliers);
+      if (!similarity) return null;
+    }
     const scale = Math.hypot(similarity.a, similarity.b);
     if (scale < .95 || scale > 1.05 || Math.abs(similarity.b) >= .08 ||
         Math.hypot(similarity.x, similarity.y) >= .15 * Math.min(width, height) ||

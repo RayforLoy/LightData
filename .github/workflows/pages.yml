@@ -50,6 +50,7 @@ jobs:
           cp web/index.html web/style.css web/*.js web/icon.png public/
           cp -r web/luts public/luts
           cp -r web/vendor public/vendor
+          cp -r web/audio public/audio
           cp web/data/films.json web/data/cameras.json public/data/
           touch public/.nojekyll
       - uses: actions/configure-pages@v5

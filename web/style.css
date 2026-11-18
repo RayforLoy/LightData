@@ -717,13 +717,23 @@ body:has(#scan-panel:not([hidden])) #image-frame {
   color: var(--amber);
   line-height: 1.4;
 }
-#reciprocity-note {
+#reciprocity-details {
   font-size: 9px;
   min-height: 0;
   max-height: 30px;
   overflow-y: auto;
   line-height: 1.3;
   margin: 3px 0;
+}
+#reciprocity-details:has(#reciprocity-note:empty) {
+  display: none;
+}
+#reciprocity-source {
+  margin-inline-start: 5px;
+}
+#dim-meter {
+  margin: 3px 0;
+  font-size: 11px;
 }
 #iso-heading {
   display: flex;
@@ -1168,9 +1178,97 @@ pre {
     font-size: 10px;
     margin-bottom: 2px;
   }
-  .landscape #reciprocity-note {
+  .landscape #reciprocity-details {
     max-height: 20px;
   }
+}
+
+#framing-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+#framing-overlay img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: none;
+}
+#finder-level {
+  position: absolute;
+  width: min(70px, 45%);
+  height: auto;
+  left: 50%;
+  top: 78%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+#scan-level, #scan-low-light {
+  font-size: 11px;
+}
+#spot-list button[aria-pressed="true"] {
+  box-shadow: inset 0 -2px currentColor;
+}
+#more > :is(fieldset, details) {
+  margin-inline: 20px;
+}
+.more-section {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.more-section summary {
+  cursor: pointer;
+  color: var(--amber);
+  font-size: 14px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 10px;
+}
+.form-grid select { min-width: 0; }
+#snapshot-list > div {
+  display: flex;
+  gap: 6px;
+  margin-block: 6px;
+}
+#snapshot-list > div > :first-child {
+  flex: 1;
+  text-align: start;
+}
+#spot-placement > :not(.dialog-title), #ground-confirm > :not(.dialog-title) {
+  margin: 12px 16px;
+}
+#ground-capture {
+  inset: 0;
+  margin: 0;
+  max-width: none;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  background: black;
+  border: 0;
+  border-radius: 0;
+}
+#ground-capture::backdrop { background: black; }
+#ground-abort {
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  color: #777;
+  background: #080808;
+}
+#notice-link {
+  display: block;
+  margin: 0 20px 10px;
+}
+@media (max-width: 360px) {
+  .toolbar { gap: 6px; }
+  .toolbar nav { gap: 2px; }
+  .brand { font-size: 22px; }
 }
 
 .focal-field {

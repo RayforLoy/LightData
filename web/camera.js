@@ -81,6 +81,28 @@ const reportedValue = (value, range) => Number.isFinite(value) && value > 0 &&
   Number.isFinite(range?.min) && Number.isFinite(range?.max) &&
   range.min <= range.max && value >= range.min && value <= range.max;
 
+function snapControl(value, { min, max, step }) {
+  const bounded = Math.max(min, Math.min(max, value));
+  if (!(step > 0)) return bounded;
+  const steps = Math.min(Math.floor((max - min) / step), Math.round((bounded - min) / step));
+  return min + step * steps;
+}
+
+// Image Capture reports exposure time in units of 100 microseconds.
+export function fasterScanExposure(settings, capabilities) {
+  const original = settings.exposureTime;
+  const times = capabilities.exposureTime, sensitivities = capabilities.iso;
+  if (!(original > 110) || !reportedValue(original, times) || !reportedValue(settings.iso, sensitivities))
+    return null;
+  const product = original * settings.iso;
+  const goal = snapControl(100, times);
+  const iso = snapControl(product / (goal || 100), sensitivities);
+  const exposureTime = snapControl(product / iso, times);
+  if (!(exposureTime > 0 && exposureTime < original && iso > 0) ||
+      Math.abs(Math.log2(exposureTime * iso / product)) > .1) return null;
+  return { exposureTime, iso };
+}
+
 // applyConstraints replaces the track's constraints. Retain unrelated video and
 // camera controls, replacing only this channel in basic and advanced sets.
 function scanConstraints(track, patch, settings, capabilities) {
@@ -325,12 +347,12 @@ export class Camera extends EventTarget {
   /** Best-effort AE/AWB hold, using reported values in Image Capture API units.
    * Unsupported / incomplete channels remain automatic. Never invent metadata.
    * release() is idempotent and returns independent per-channel restore states. */
-  async lockForPanorama() {
+  async lockForPanorama({ preferFaster = false } = {}) {
     const previous = this.panoramaLock;
     if (previous?.sameSession() && !previous.released) {
       if (previous.releasePromise) {
         await previous.releasePromise;
-        return this.lockForPanorama();
+        return this.lockForPanorama({ preferFaster });
       }
       return previous.promise;
     }
@@ -399,14 +421,29 @@ export class Camera extends EventTarget {
             continue;
           }
           const patch = { ...control.original, [control.mode]: "manual" };
+          const faster = preferFaster && control.key === "exposure"
+            ? fasterScanExposure(before, capabilities) : null;
           let rejected = false;
+          let actual;
           try {
-            await track.applyConstraints(scanConstraints(track, patch, before, capabilities));
+            await track.applyConstraints(scanConstraints(track, { ...patch, ...faster }, before, capabilities));
           } catch (error) {
             rejected = true;
             result.errors[control.key] = errorText(error);
           }
-          const actual = read();
+          actual = read();
+          if (faster && actual && actual[control.mode] !== "manual" &&
+              control.revision === this.exposureRevision) {
+            try {
+              await track.applyConstraints(scanConstraints(track, patch, actual, capabilities));
+              rejected = false;
+              delete result.errors[control.key];
+            } catch (error) {
+              rejected = true;
+              result.errors[control.key] = errorText(error);
+            }
+            actual = read();
+          }
           if (!actual) { result[status] = "superseded"; continue; }
           if (control.key === "exposure" && control.revision !== this.exposureRevision) {
             control.changed = true;

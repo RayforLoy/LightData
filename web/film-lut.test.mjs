@@ -236,7 +236,7 @@ test(
     const { readFile } = await import("node:fs/promises");
     const server = createServer(async (req, res) => {
       if (req.url === "/") return res.end("<html></html>");
-      if (!["/core.js", "/film-lut.js"].includes(req.url)) {
+      if (!["/core.js", "/film-lut.js", "/online-reciprocity.js"].includes(req.url)) {
         res.writeHead(404);
         return res.end();
       }

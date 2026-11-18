@@ -6,7 +6,6 @@ import {
   ISOS,
   field,
   exposureEV,
-  solve,
   meter,
   histogram,
   defaultResponse,
@@ -34,6 +33,10 @@ import { sampleGrid, fitResponse } from "./calibration.js";
 import { LensSetup } from "./lens-setup.js";
 import { completeOptics, makeOptics, opticsField } from "./optics.js";
 import { FilmLutLibrary, createFilmLutRenderer } from "./film-lut.js";
+import { dimMeterWarning, opticalLossStops, shootingExposure, zoneMiddleEv } from "./exposure-tools.js";
+import { finderLevel, paintFinderLevel } from "./finder-level.js";
+import { GroundGlass } from "./ground-glass.js";
+import { FinderMedia } from "./finder-media.js";
 
 const $ = (id) => document.getElementById(id);
 const STORE = "lightdata.web.v1";
@@ -46,6 +49,7 @@ const COLORS = [
   "#ba9dff",
   "#ff9864",
 ];
+const ZONES = ["0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 const spotColor = (id) =>
   COLORS[id - 1] || `hsl(${(id * 137.508) % 360} 75% 72%)`;
 const number = (value) => Number(value.toFixed(2)).toString();
@@ -84,6 +88,14 @@ const state = {
   lenses: saved.lenses || {},
   phoneId: saved.phoneId || "",
   layouts: saved.layouts || {},
+  filterStops: clamp(Number(saved.filterStops) || 0, 0, 24),
+  bellowsDraw: clamp(Number(saved.bellowsDraw) || 0, 0, 4000),
+  lossSource: saved.lossSource === "measured" ? "measured" : "geometric",
+  measuredLoss: finite(saved.measuredLoss) && saved.measuredLoss >= 0 ? saved.measuredLoss : null,
+  groundCalibrations: saved.groundCalibrations || {},
+  showLevel: saved.showLevel !== false,
+  soundEnabled: saved.soundEnabled !== false,
+  overlayOpacity: [.2, .4, .6].includes(saved.overlayOpacity) ? saved.overlayOpacity : .4,
   presets: [],
   films: [],
   single: false,
@@ -91,6 +103,8 @@ const state = {
   frozen: false,
   spots: [],
   nextSpot: 1,
+  placement: null,
+  frozenLevel: null,
   raw: null,
   image: null,
   hist: null,
@@ -115,6 +129,10 @@ try {
 const camera = new Camera($("capture-video"));
 const cameraId = () =>
   camera.settings.deviceId || camera.track?.label || "default";
+const media = new FinderMedia({ state, toast, notice, persist, snapshotFrame, framingField });
+const ground = new GroundGlass({ state, camera, cameraId, sceneBase, calibration, toast,
+  persist, absolute, toggleFreeze, cancelScan, processImage, updateOpticalLoss, filmCorrection,
+  playSound: () => media.beep() });
 let activeCameraChoice = "";
 const lensSetup = new LensSetup({
   current: () => ({
@@ -196,6 +214,14 @@ function persist() {
       "lenses",
       "phoneId",
       "layouts",
+      "filterStops",
+      "bellowsDraw",
+      "lossSource",
+      "measuredLoss",
+      "groundCalibrations",
+      "showLevel",
+      "soundEnabled",
+      "overlayOpacity",
     ].map((key) => [key, state[key]]),
   );
   value.presets = CustomPresets.encode(state.presets);
@@ -226,6 +252,7 @@ function resetSettings() {
     ),
     lenses: state.lenses,
     phoneId: state.phoneId,
+    groundCalibrations: state.groundCalibrations,
     presets: CustomPresets.encode(state.presets),
   };
   try {
@@ -245,9 +272,11 @@ function toast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => $("toast").classList.remove("visible"), 4500);
 }
-function notice(title, text) {
+function notice(title, text, url) {
   $("notice-title").textContent = t(title);
   $("notice-text").textContent = t(text);
+  $("notice-link").hidden = !url;
+  if (url) $("notice-link").href = url;
   if (!$("notice").open) $("notice").showModal();
 }
 function warnEstimated() {
@@ -287,9 +316,9 @@ function film() {
   const preset = state.presets.find(p => p.id === state.filmId);
   return preset ? presetFilm(preset) : state.films[0];
 }
-function calibration() {
-  const capture = captureExposure(camera.settings, state.profile);
-  const reported = Number(camera.settings.iso);
+function calibration(settings = camera.settings) {
+  const capture = captureExposure(settings, state.profile);
+  const reported = Number(settings.iso);
   const entered = state.profile.confirmed ? Number(state.profile.iso) : NaN;
   const iso = capture?.iso || (reported > 0 ? reported : entered);
   return finite(iso) && iso > 0
@@ -306,6 +335,27 @@ function response() {
 function measurement() {
   return state.single ? state.held : state.reading;
 }
+function currentLoss() {
+  return state.lossSource === "measured" && state.measuredLoss !== null
+    ? state.measuredLoss
+    : opticalLossStops(state.filterStops, state.bellowsDraw, state.focal);
+}
+function middleEv() {
+  return exposureEV(state.exposure || state.manual) + currentLoss();
+}
+function meteredEv() {
+  return state.placement ? zoneMiddleEv(state.placement.point.ev, state.placement.zone) : measurement();
+}
+function updateExposure() {
+  const reading = meteredEv();
+  state.exposure = finite(reading)
+    ? shootingExposure(state.mode, state.manual, reading, currentLoss(), state.compensation, !!state.placement)
+    : { ...state.manual };
+}
+function filmCorrection(seconds) {
+  const selected = state.films.find((stock) => stock.id === state.filmId);
+  return reciprocity(selected?.name, seconds);
+}
 function absolute() {
   return finite(state.cameraEV);
 }
@@ -320,6 +370,12 @@ function target() {
     ? Math.max(state.format.w, state.format.h)
     : Math.min(state.format.w, state.format.h);
   return field(w, h, state.focal);
+}
+function framingField() {
+  if (state.frozen) return state.frozenField;
+  if (!state.pano) return state.source ? target() : null;
+  const { x, y } = state.pano.target;
+  return displayTurn() % 180 ? { x: y, y: x } : { x, y };
 }
 function sourceField() {
   if (!state.raw) return null;
@@ -505,7 +561,7 @@ function drawHistogram() {
     t(`直方图横轴 ${isAbsolute ? "EV100" : "相对 EV"} ${number(axis.left)} 至 ${number(axis.left + axis.span)}，纵轴放大 ${number(axis.gain)} 倍`),
   );
   const base = isAbsolute ? state.cameraEV : 0;
-  const middle = isAbsolute ? exposureEV(state.exposure || state.manual) : 0;
+  const middle = isAbsolute ? middleEv() : 0;
   const xAt = (ev) => plot.x + ((ev - axis.left) / axis.span) * plot.w;
   const bins = new Float64Array(Math.max(32, Math.floor(plot.w)));
   if (state.hist)
@@ -747,6 +803,16 @@ function displayImage(scale, snapshot = false) {
     : camera.previewCanvas(state.source, bounds, scale);
   return display || state.image;
 }
+function snapshotFrame() {
+  if (!state.image) return null;
+  return {
+    image: frozenDisplay || displayImage(1, true),
+    format: state.format.name,
+    focal: state.focal,
+    field: framingField(),
+    level: state.frozen ? state.frozenLevel : currentLevel(),
+  };
+}
 let fpsTimes = [], fpsTimer;
 function resetFps() {
   clearInterval(fpsTimer);
@@ -777,12 +843,14 @@ function drawView() {
     preview: state.preview && known,
     manual: state.mode === "M" && known,
     cameraEv: state.cameraEV || 0,
-    targetEv: exposureEV(state.exposure || state.manual),
+    targetEv: middleEv(),
     response: response(),
     stripes: known,
     lut: state.previewMode === "lut" ? lutBytes : null,
   });
   fitView(rendered);
+  paintFinderLevel($("finder-level"), state.showLevel && (state.frozen ? state.frozenLevel : currentLevel()));
+  media.layoutOverlay();
   return true;
 }
 function processImage(paint = true) {
@@ -823,9 +891,9 @@ function processImage(paint = true) {
 
 function renderPairs() {
   const e = state.exposure,
-    available = finite(measurement()),
+    available = finite(meteredEv()),
     width = $("meter").clientWidth;
-  const pairs = equivalentExposures(e);
+  const pairs = equivalentExposures(e, { exactLong: currentLoss() > 0 || !!state.placement });
   const count = Math.min(
     pairs.length,
     width >= 570 ? 9 : width >= 380 ? 7 : width >= 235 ? 5 : 3,
@@ -843,12 +911,14 @@ function renderPairs() {
     state.mode,
     available,
     state.frozen,
-    film()?.name,
+    state.filmId,
   ]);
+  $("exposure-table-label").textContent = t(state.placement ? `点 ${state.placement.point.id} → Zone ${ZONES[state.placement.zone]}`
+    : currentLoss() ? `等效曝光 · 光损 ${number(currentLoss())} EV` : "等效曝光");
   if (key === lastPairKey) return;
   lastPairKey = key;
   $("exposure-table").replaceChildren();
-  const corrections = shown.map((p) => reciprocity(film()?.name, p.t));
+  const corrections = shown.map((p) => filmCorrection(p.t));
   const corrected =
     (available || state.mode === "M") &&
     corrections.some((r) => r.status === "corrected");
@@ -868,10 +938,13 @@ function renderPairs() {
     button.append(shutter);
     if (corrected) {
       const actual = document.createElement("small");
-      actual.textContent =
-        t(corrections[i].status === "corrected"
-          ? "→ " + timeLabel(corrections[i].seconds)
-          : "");
+      const result = corrections[i];
+      if (result.status === "corrected") {
+        actual.textContent = "→ " + longTimeLabel(result.seconds) +
+          (result.extrapolated ? "*" : result.network ? "~" : "");
+        actual.title = t(result.note);
+        button.setAttribute("aria-label", `${button.getAttribute("aria-label")} · ${t(result.note)}`);
+      }
       button.append(actual);
     }
     button.append(a);
@@ -885,10 +958,17 @@ function renderPairs() {
     });
     $("exposure-table").append(button);
   });
-  const correctedTime = reciprocity(film()?.name, e.t);
-  $("reciprocity-note").textContent =
-    t(e.t >= 1 && (available || state.mode === "M") ? correctedTime.note : "");
-  $("reciprocity-note").title = t(correctedTime.source || "");
+  const correctedTime = filmCorrection(e.t);
+  const show = e.t >= 1 && (available || state.mode === "M");
+  $("reciprocity-note").textContent = t(show ? correctedTime.note : "");
+  const source = $("reciprocity-source");
+  source.hidden = !show || !correctedTime.source;
+  if (!source.hidden) source.href = correctedTime.source;
+}
+function longTimeLabel(seconds) {
+  if (seconds < 120) return timeLabel(seconds);
+  if (seconds < 3600) return `${number(seconds / 60)}m`;
+  return `${number(seconds / 3600)}h`;
 }
 function renderIso() {
   const values = [...new Set([...ISOS, state.manual.iso])].sort(
@@ -928,11 +1008,9 @@ function renderIso() {
 function refresh(paint = true) {
   const selectedFilm = film();
   if (!selectedFilm) return;
-  const reading = measurement();
+  const reading = meteredEv();
   if (!state.frozen || state.exposure?.iso !== state.manual.iso)
-    state.exposure = finite(reading)
-      ? solve(state.mode, state.manual, reading, state.compensation)
-      : { ...state.manual };
+    updateExposure();
   if (!state.exposure) state.exposure = { ...state.manual };
   document.querySelectorAll("[data-mode]").forEach((b) => {
     b.setAttribute("aria-pressed", b.dataset.mode === state.mode);
@@ -944,16 +1022,18 @@ function refresh(paint = true) {
   $("single").disabled = state.frozen;
   $("comp").disabled = state.frozen || state.mode === "M";
   $("comp").value = Math.round(state.compensation * 3);
-  $("comp-label").textContent = t(state.mode === "M" ? "曝光偏差" : "曝光补偿");
+  const displayResidual = state.mode === "M" || !!state.placement;
+  $("comp-label").textContent = t(displayResidual ? "曝光偏差" : "曝光补偿");
   const residual = finite(reading)
-    ? reading - exposureEV(state.exposure)
+    ? reading - middleEv()
     : null;
+  $("dim-meter").hidden = !dimMeterWarning(state.reading, state.hist);
   $("comp-value").textContent =
-    t(state.mode === "M"
+    t(displayResidual
       ? (finite(residual) ? signed(residual) : "—") + " EV"
       : signed(state.compensation) + " EV");
   if (
-    state.mode !== "M" &&
+    !displayResidual &&
     finite(residual) &&
     Math.abs(residual - state.compensation) > 0.25
   )
@@ -977,8 +1057,8 @@ function refresh(paint = true) {
       : "");
   $("histogram").classList.toggle("uncalibrated", !calibration());
   $("meter-reading").classList.toggle("calibrated", !!calibration());
-  $("meter-reading").textContent = t(finite(reading)
-    ? `${reading.toFixed(1)} EV100 · ${state.single ? "单次 · " : ""}${calibration() ? "已校准" : "估测"}`
+  $("meter-reading").textContent = t(finite(measurement())
+    ? `${measurement().toFixed(1)} EV100 · ${state.single ? "单次 · " : ""}${calibration() ? "已校准" : "估测"}`
     : state.image
       ? state.single
         ? "单次 · 等待有效测光"
@@ -1149,6 +1229,8 @@ function captureProfileFromInputs() {
 }
 
 async function startCamera({ throwErrors = false } = {}) {
+  if (state.showLevel) void enableOrientation();
+  ground.cancel();
   $("start-camera").disabled = true;
   $("start-message").textContent = t("正在请求相机权限…");
   calibrationToken++;
@@ -1156,6 +1238,8 @@ async function startCamera({ throwErrors = false } = {}) {
   frozenDisplay = null;
   stillFrame = false;
   state.frozenResponse = null;
+  state.placement = null;
+  $("spot-placement").close();
   state.held = null;
   state.spots = [];
   drawSpots();
@@ -1227,6 +1311,7 @@ camera.addEventListener("settings", (event) => {
   refreshCaptureControls(event.detail);
 });
 camera.addEventListener("frame", (event) => {
+  if (ground.sample(event.detail)) return;
   if (state.frozen || state.pano) return;
   state.raw = event.detail.image;
   stillFrame = event.detail.still;
@@ -1234,10 +1319,12 @@ camera.addEventListener("frame", (event) => {
   processImage(false);
 });
 camera.addEventListener("previewframe", (event) => {
+  if (ground.capturing) return;
   if (!state.frozen && state.pano) capturePanorama(event.detail.time);
   if (!state.frozen && drawView()) recordPresentation();
 });
 camera.addEventListener("stopped", () => {
+  ground.cancel();
   resetFps();
   $("live-state").classList.remove("running");
   $("live-state").innerHTML = "<i></i> OFF";
@@ -1262,6 +1349,7 @@ function toggleFreeze() {
     return;
   }
   if (!state.frozen) {
+    ground.cancelPair();
     const latest = !state.pano && camera.captureAnalysis();
     if (latest && !state.pano) {
       state.raw = latest;
@@ -1269,6 +1357,9 @@ function toggleFreeze() {
     }
     if (state.pano) processImage(false);
     frozenDisplay = displayImage(1, true);
+    state.frozenField = framingField();
+    state.frozenLevel = currentLevel();
+    state.frozenProfile = state.profileKey;
   } else {
     frozenDisplay = null;
   }
@@ -1281,9 +1372,12 @@ function toggleFreeze() {
     );
     state.spots = [];
     state.nextSpot = 1;
+    if (absolute()) media.beep();
   } else {
     state.frozenResponse = null;
+    state.frozenProfile = null;
     state.spots = [];
+    state.placement = null;
     processImage();
   }
   drawSpots();
@@ -1303,14 +1397,13 @@ function drawSpots() {
     marker.style.color = spotColor(point.id);
     $("spots").append(marker);
     const label = document.createElement("button");
-    label.textContent = t(`${point.id} · ${point.ev.toFixed(1)} ${absolute() ? "EV100" : "EV"} ×`);
+    const zone = state.placement?.point === point ? ZONES[state.placement.zone] : null;
+    label.textContent = `${point.id} · ${point.ev.toFixed(1)} ${absolute() ? "EV100" : "EV"}${zone ? ` → ${zone}` : ""}`;
     label.style.color = spotColor(point.id);
-    label.title = t("删除测光点");
-    label.addEventListener("click", () => {
-      state.spots = state.spots.filter((p) => p.id !== point.id);
-      drawSpots();
-      drawHistogram();
-    });
+    label.title = t("曝光放置");
+    label.setAttribute("aria-haspopup", "dialog");
+    label.setAttribute("aria-pressed", String(zone !== null));
+    label.addEventListener("click", () => openPlacement(point));
     $("spot-list").append(label);
   });
   const exit = document.createElement("button");
@@ -1321,12 +1414,47 @@ function drawSpots() {
   $("spot-list").append(exit);
 }
 
-async function enableOrientation() {
+let placementPoint = null;
+function openPlacement(point) {
+  placementPoint = point;
+  $("placement-point").textContent = t(`点 ${point.id} · ${point.ev.toFixed(1)} ${absolute() ? "EV100" : "EV"}`);
+  $("placement-clear").disabled = !state.placement;
+  $("placement-zones").replaceChildren(...ZONES.map((label, zone) => {
+    const button = document.createElement("button");
+    button.textContent = label;
+    button.disabled = !absolute();
+    button.setAttribute("aria-pressed", String(state.placement?.point === point && state.placement.zone === zone));
+    button.addEventListener("click", () => setPlacement({ point, zone }));
+    return button;
+  }));
+  $("spot-placement").showModal();
+}
+function setPlacement(value) {
+  state.placement = value;
+  updateExposure();
+  drawSpots();
+  refresh();
+  $("spot-placement").close();
+}
+
+let orientationEnabled = false;
+let orientationRequest;
+function enableOrientation() {
+  if (orientationEnabled) return Promise.resolve(true);
+  orientationRequest ??= requestOrientation().then((granted) => {
+    orientationEnabled = granted;
+    orientationRequest = null;
+    $("level-permission").hidden = granted || !orientationNeedsPermission();
+    return granted;
+  });
+  return orientationRequest;
+}
+function orientationNeedsPermission() {
+  return typeof window.DeviceOrientationEvent?.requestPermission === "function";
+}
+async function requestOrientation() {
   try {
-    if (
-      typeof DeviceOrientationEvent !== "undefined" &&
-      typeof DeviceOrientationEvent.requestPermission === "function"
-    ) {
+    if (orientationNeedsPermission()) {
       const permission = await DeviceOrientationEvent.requestPermission();
       if (permission !== "granted") {
         poseAngles = null;
@@ -1354,6 +1482,10 @@ function screenAngle() {
 function currentPose(now = performance.now()) {
   if (!poseAngles || now - poseTime > 1000) return null;
   return orientationMatrix(...poseAngles, state.pano ? state.scanAngle : screenAngle());
+}
+function currentLevel(now = performance.now()) {
+  if (!poseAngles || now - poseTime > 1000) return null;
+  return finderLevel(poseAngles[1], poseAngles[2], screenAngle());
 }
 function displayTurn() {
   return state.pano ? (state.scanAngle - screenAngle() + 360) % 360 : 0;
@@ -1397,6 +1529,7 @@ async function startScan() {
   const options = { target: target(), source: { ...state.source },
     width: 720, height: 720, response: response() };
   const before = sceneBase(), beforeExposure = trackExposure(camera.settings);
+  ground.cancelPair();
   const preparation = { controller: new AbortController(), lockPromise: Promise.resolve(null) };
   scanPending = preparation;
   scanPreparing = true;
@@ -1410,7 +1543,7 @@ async function startScan() {
   // A new scan cannot share an old preparing scan's lease: cancellation must
   // finish releasing that hold before the next scan acquires camera controls.
   preparation.lockPromise = scanRelease.then(() => token === scanGeneration
-    ? camera.lockForPanorama() : null).catch(() => null);
+    ? camera.lockForPanorama({ preferFaster: true }) : null).catch(() => null);
   const [engine, lock] = await Promise.all([
     PanoramaEngine.create(options, 20000, preparation.controller.signal).catch(() => null),
     preparation.lockPromise,
@@ -1432,6 +1565,7 @@ async function startScan() {
   state.scanRasterWide = state.raw.width > state.raw.height;
   state.panoChannel = { ...camera.settings };
   const origin = currentPose();
+  state.scanLevel = currentLevel();
   const afterExposure = trackExposure(camera.settings);
   state.scanReference = state.profile.mode === "reference" && finite(before.value) &&
       lock?.exposureLocked && beforeExposure && afterExposure ? {
@@ -1502,6 +1636,11 @@ function updateScan() {
   $("scan-status").dataset.processingMs = String(state.pano.processingMs || 0);
   $("scan-status").dataset.exposureLocked = String(!!scanLock?.exposureLocked);
   $("scan-status").dataset.whiteBalanceLocked = String(!!scanLock?.whiteBalanceLocked);
+  const level = state.showLevel && state.scanLevel;
+  $("scan-level").hidden = !level;
+  if (level) $("scan-level").textContent = t(`起点 · 横滚 ${signed(level.roll)}° · 俯仰 ${signed(level.pitch)}°`);
+  const exposure = captureExposure(camera.settings, state.profile) || trackExposure(camera.settings);
+  $("scan-low-light").hidden = !state.scan || !(exposure?.t > .011);
   $("scan-finish").textContent = t(state.scan ? "完成 / 二次构图" : "继续补拍");
   const home = $("scan-home");
   home.hidden = !guide.home;
@@ -1536,14 +1675,17 @@ function updateScan() {
   ctx.strokeStyle = "#fff";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(x - 5, y);
-  ctx.lineTo(x + 5, y);
-  ctx.moveTo(x, y - 5);
-  ctx.lineTo(x, y + 5);
+  ctx.moveTo(w / 2 - 6, h / 2);
+  ctx.lineTo(w / 2 + 6, h / 2);
+  ctx.moveTo(w / 2, h / 2 - 6);
+  ctx.lineTo(w / 2, h / 2 + 6);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 8, 0, Math.PI * 2);
   ctx.stroke();
   canvas.setAttribute(
     "aria-label",
-    t(`拼接覆盖 ${Math.round(guide.coverage * 100)}%，白色十字为当前方向，黄色圆圈为待补拍区域，${direction}`),
+    t(`拼接覆盖 ${Math.round(guide.coverage * 100)}%，十字为起点，白圈为当前方向，黄圈为待补拍区域，${direction}`),
   );
 }
 function cancelScan() {
@@ -1559,6 +1701,7 @@ function cancelScan() {
   scanEngine = null;
   scanLock = null;
   state.scanReference = null;
+  state.scanLevel = null;
   state.pano = null;
   state.scan = false;
   state.manualCrop = false;
@@ -1794,7 +1937,63 @@ async function startCalibration() {
   }
 }
 
+function renderOpticalLoss() {
+  const measured = $("loss-source").querySelector('[value="measured"]');
+  measured.disabled = state.measuredLoss === null;
+  if (!measured.disabled) measured.textContent = t(`毛玻璃实测 · ${number(state.measuredLoss)} EV`);
+  $("loss-source").value = measured.disabled ? "geometric" : state.lossSource;
+  $("geometric-loss-controls").hidden = $("loss-source").value === "measured";
+  $("filter-stops").value = number(state.filterStops);
+  $("filter-factor").value = number(2 ** state.filterStops);
+  $("bellows-draw").value = number(state.bellowsDraw);
+  $("loss-info").textContent = t(`总光损 +${number(currentLoss())} EV`);
+}
+
+function updateOpticalLoss() {
+  persist();
+  renderOpticalLoss();
+  updateExposure();
+  refresh();
+}
+
+function bindMore() {
+  media.bind();
+  ground.bind();
+  $("level-enabled").checked = state.showLevel;
+  $("more-toggle").addEventListener("click", () => {
+    renderOpticalLoss();
+    ground.refresh();
+    media.refresh();
+    $("level-permission").hidden = orientationEnabled || !state.showLevel || !orientationNeedsPermission();
+    $("more").showModal();
+  });
+  $("loss-source").addEventListener("change", (event) => {
+    state.lossSource = event.target.value;
+    updateOpticalLoss();
+  });
+  const updateNumber = (id, update) => $(id).addEventListener("change", (event) => {
+    const input = event.target;
+    if (input.checkValidity() && finite(input.valueAsNumber)) {
+      update(input.valueAsNumber);
+      updateOpticalLoss();
+    } else renderOpticalLoss();
+  });
+  updateNumber("filter-stops", (value) => state.filterStops = value);
+  updateNumber("filter-factor", (value) => state.filterStops = Math.log2(value));
+  updateNumber("bellows-draw", (value) => state.bellowsDraw = value);
+  $("level-enabled").addEventListener("change", (event) => {
+    state.showLevel = event.target.checked;
+    if (state.showLevel) void enableOrientation();
+    else $("level-permission").hidden = true;
+    persist();
+    drawView();
+    updateScan();
+  });
+  $("level-permission").addEventListener("click", () => void enableOrientation());
+}
+
 function bindEvents() {
+  bindMore();
   $("settings-toggle").addEventListener("click", openSettings);
   $("camera-shortcut").addEventListener("click", openSettings);
   $("meter-configure").addEventListener("click", openSettings);
@@ -1817,6 +2016,8 @@ function bindEvents() {
     state.cameraEV = null;
     state.held = null;
     state.spots = [];
+    state.placement = null;
+    frozenDisplay = null;
     cancelScan();
     $("image-frame").style.display = "none";
     $("welcome").hidden = false;
@@ -2041,6 +2242,16 @@ function bindEvents() {
     drawView();
   });
   $("spots-toggle").addEventListener("click", toggleFreeze);
+  $("placement-clear").addEventListener("click", () => setPlacement(null));
+  $("spot-delete").addEventListener("click", () => {
+    state.spots = state.spots.filter((point) => point !== placementPoint);
+    if (state.placement?.point === placementPoint) setPlacement(null);
+    else {
+      drawSpots();
+      drawHistogram();
+      $("spot-placement").close();
+    }
+  });
   document.querySelectorAll("[data-mode]").forEach((b) =>
     b.addEventListener("click", () => {
       state.manual = { ...state.exposure };
@@ -2064,6 +2275,7 @@ function bindEvents() {
     state.held = state.reading;
     refresh();
     if (!finite(state.held)) toast("绝对测光需要设置手机采集参数");
+    else media.beep();
   });
   const toggleLock = () => {
     if (state.frozen) return;
@@ -2170,7 +2382,10 @@ function bindEvents() {
     if (state.exposure) renderPairs();
   }).observe($("panels"));
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) resetFps();
+    if (document.hidden) {
+      resetFps();
+      ground.cancel();
+    }
     camera.pause(document.hidden);
     if (state.pano) state.pano.resumeTracking({ preserveSensorOrigin: true });
   });
@@ -2392,7 +2607,7 @@ function bindGestures() {
   $("view").addEventListener("pointerup", (e) => {
     if (
       viewDown &&
-      state.frozen &&
+      (state.frozen || ground.pairing) &&
       Math.hypot(e.clientX - viewDown.x, e.clientY - viewDown.y) < 8
     ) {
       const r = $("view").getBoundingClientRect(),
@@ -2400,6 +2615,11 @@ function bindGestures() {
         y = clamp((e.clientY - r.top) / r.height, 0, 1),
         ev = spot(state.image, x, y, response(), state.cameraEV || 0);
       if (finite(ev)) {
+        if (ground.pairing) {
+          ground.compare(ev);
+          viewDown = null;
+          return;
+        }
         state.spots.push({ id: state.nextSpot++, x, y, ev });
         drawSpots();
         drawHistogram();

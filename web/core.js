@@ -1,3 +1,5 @@
+import { onlineReciprocity } from "./online-reciprocity.js";
+
 // Numerical parity with the Android application. Values are linear-light unless named code.
 export const FORMATS = [
   ["1 英寸", 13.2, 8.8],
@@ -87,7 +89,7 @@ export function solve(mode, manual, sceneEv, compensationEV = 0) {
     : { ...manual, t: closest(SHUTTERS, (manual.a * manual.a) / light) };
 }
 
-export function equivalentExposures(center) {
+export function equivalentExposures(center, { exactLong = false } = {}) {
   const groups = new Map();
   for (const a of APERTURES) {
     const stop = 2 * Math.log2(a / center.a),
@@ -105,6 +107,7 @@ export function equivalentExposures(center) {
     const ideal = center.t * (a / center.a) ** 2,
       t = closest(SHUTTERS, ideal);
     if (Math.abs(Math.log2(t / ideal)) <= 0.18) pairs.push({ ...center, a, t });
+    else if (exactLong && Number.isFinite(ideal) && ideal > 30) pairs.push({ ...center, a, t: ideal });
   }
   return pairs.sort((a, b) => a.a - b.a);
 }
@@ -464,6 +467,8 @@ export const CustomPresets = {
 
 const ILFORD =
   "https://www.ilfordphoto.com/wp/wp-content/uploads/2024/05/Reciprocity-Failure-Compensation-v2.pdf";
+const PRO_160S = "https://asset.fujifilm.com/www/us/files/2020-03/d52487c5c6f84e7f935c299491c5c1ff/ProfessionalFilmDataGuide.pdf#page=16";
+const VELVIA_100 = "https://asset.fujifilm.com/master/emea/files/2020-10/2f3c7f90a0b0c6e605e84f98b7d489c2/films_velvia-100_datasheet_01.pdf#page=2";
 const powers = {
   "SFX 200": 1.43,
   "PAN F PLUS": 1.33,
@@ -509,6 +514,7 @@ range(
   2,
 );
 range(["VELVIA 50", "PRO 400H", "SUPERIA REALA 100"], 0.00025, 1);
+range(["VELVIA 100"], 0.00025, 60);
 range(["PROVIA 100F"], 0.00025, 128);
 range(["ASTIA 100"], 0.00025, 32);
 range(["ASTIA 100F"], 0.00025, 60);
@@ -542,6 +548,7 @@ const advice = {
   "T-MAX 100": { 0.0001: "开大 1/3 档", 1: "开大 1/3 档" },
   "T-MAX 400": { 10: "开大 1/3 档" },
   "PRO 400H": { 4: "开大 1/2 档", 16: "开大 1 档" },
+  "PRO 160S": { 4: "开大 1/3 档" },
   "PROVIA 100F": { 240: "2.5G 滤镜，开大 1/3 档" },
   "VELVIA 50": {
     4: "5M 滤镜，开大 1/3 档",
@@ -549,27 +556,34 @@ const advice = {
     16: "10M 滤镜，开大 2/3 档",
     32: "12.5M 滤镜，开大 1 档",
   },
+  "VELVIA 100": {
+    120: "2.5M 滤镜，开大 1/3 档",
+    240: "2.5M 滤镜，开大 1/2 档",
+    480: "2.5M 滤镜，开大 2/3 档",
+  },
   "PANCRO 400": { 1: "开大 1/2 档", 10: "开大 1 档", 60: "开大 2 档" },
   "EKTACHROME E100": { 120: "日光加 CC10R，快门补偿未给出" },
 };
 
 export function reciprocity(name, t) {
   const power =
-    powers[name] ??
+    (Object.hasOwn(powers, name) ? powers[name] : null) ??
     (name === "Phoenix II"
       ? 1.31
       : name === "PAN 200 · Kentmere"
         ? 1.26
         : null);
-  let source = powers[name]
+  let source = Object.hasOwn(powers, name)
     ? ILFORD
     : name === "Phoenix II"
-      ? "https://www.harmanphoto.co.uk/amfile/file/download/file/1968/product/2208/"
+      ? "https://www.harmanphoto.co.uk/amfile/file/download/file/1967/product/2216/#page=2"
       : name === "PAN 200 · Kentmere"
         ? "https://www.ilfordphoto.com/wp/wp-content/uploads/2025/05/KENTMERE-PAN-200-260325.pdf"
-        : catalogue.find((f) => f.name === name)?.url;
+        : name === "PRO 160S" ? PRO_160S
+          : name === "VELVIA 100" ? VELVIA_100
+            : catalogue.find((f) => f.name === name)?.url;
   const supported =
-    power !== null || ranges.has(name) || advice[name] || name === "ACROS II";
+    power !== null || ranges.has(name) || Object.hasOwn(advice, name) || name === "ACROS II";
   if (!supported) source = null;
   const unknown = (note) => ({
     seconds: null,
@@ -583,21 +597,21 @@ export function reciprocity(name, t) {
     note: "无需补偿",
     source,
   });
-  const corrected = (seconds, extra = "") =>
+  const corrected = (seconds, extra = "", metadata = {}) =>
     Number.isFinite(seconds)
       ? {
           seconds,
           status: "corrected",
           note: "补偿后 " + Number(seconds.toFixed(1)) + " 秒" + extra,
           source,
+          ...metadata,
         }
       : unknown("超出可计算范围");
   if (!Number.isFinite(t) || t <= 0) return unknown("快门时间无效");
-  if (!supported) return unknown("无此预设的补偿资料");
   if (power !== null) {
     if (t < 0.0001) return unknown("厂家未给出补偿值");
     if (t <= 1) return normal();
-    return corrected(t ** power, t > 50 ? " · 公式外推，建议试拍" : "");
+    return corrected(t ** power, t > 50 ? " · 公式外推，建议试拍" : "", { extrapolated: t > 50 });
   }
   if (name === "ACROS II") {
     if (t < 120) return normal();
@@ -607,6 +621,7 @@ export function reciprocity(name, t) {
   const limits = ranges.get(name);
   if (limits && t >= limits[0] && t <= limits[1]) return normal();
   if (advice[name]?.[t]) return unknown(advice[name][t]);
+  if (name === "PRO 160S" && t > 4) return unknown("厂家不建议此曝光时间");
   if (tables[name]?.[t])
     return corrected(
       tables[name][t],
@@ -614,5 +629,8 @@ export function reciprocity(name, t) {
         ? " · 显影减 " + { 1: 10, 10: 20, 100: 30 }[t] + "%"
         : "",
     );
-  return unknown("厂家未给此快门的补偿值");
+  const online = onlineReciprocity(name, t, Math.max(1, limits?.[1] ?? 1));
+  if (online && Number.isFinite(online.seconds)) return corrected(online.seconds,
+    " · 数据来源网络" + (online.extrapolated ? " · 公式外推" : ""), online);
+  return unknown(supported ? "厂家未给此快门的补偿值" : "无此预设的补偿资料");
 }

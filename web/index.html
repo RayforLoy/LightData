@@ -29,7 +29,7 @@
           </button>
           <a
             class="tool"
-            href="https://github.com/RayforLoy/LightData/releases/tag/0.1.11-beta"
+            href="https://github.com/RayforLoy/LightData/releases/tag/0.2.0-beta"
             target="_blank"
             rel="noopener"
             aria-label="下载 Android 应用"
@@ -39,6 +39,9 @@
           <button id="settings-toggle" class="tool" aria-haspopup="dialog">
             <span class="icon sliders" aria-hidden="true">☷</span
             ><span>设置</span>
+          </button>
+          <button id="more-toggle" class="tool" aria-haspopup="dialog">
+            <span class="icon" aria-hidden="true">···</span><span>更多</span>
           </button>
         </nav>
       </header>
@@ -70,9 +73,11 @@
             <span id="finder-fps" hidden>— FPS</span>
             <div id="image-frame">
               <canvas id="view" aria-label="取景画面"></canvas>
+              <div id="framing-overlay" hidden aria-hidden="true"><img alt="" /></div>
               <div id="corners"></div>
               <div id="spots"></div>
               <div class="center-cross" aria-hidden="true"></div>
+              <canvas id="finder-level" width="140" height="100" hidden aria-hidden="true"></canvas>
               <div id="scan-home" hidden role="status">
                 <i aria-hidden="true">➜</i><span>回到拼图中心</span>
               </div>
@@ -87,6 +92,8 @@
             <div id="scan-panel" class="scan-panel" hidden>
               <span id="scan-status"></span
               ><progress id="scan-progress" max="1" value="0"></progress>
+              <span id="scan-level" class="subtle" hidden></span>
+              <span id="scan-low-light" class="amber" hidden>采集快门较慢。请补光或放慢转动。</span>
               <div class="actions">
                 <button id="scan-capture">采集此处</button
                 ><button id="scan-finish">完成 / 二次构图</button
@@ -107,6 +114,10 @@
             ><span id="preview-status"></span>
           </div>
           <div id="spot-list" hidden></div>
+          <div id="ground-pair" class="finder-footer" hidden>
+            <span class="amber">点按取景器中对应刚才毛玻璃测量位置的同一物点</span>
+            <button id="ground-pair-cancel" class="quiet">取消比对</button>
+          </div>
         </section>
         <div
           id="split-main"
@@ -166,10 +177,14 @@
               />
             </div>
             <div class="table-label">
-              <span>等效曝光</span><span id="pair-iso">ISO 100</span>
+              <span id="exposure-table-label">等效曝光</span><span id="pair-iso">ISO 100</span>
             </div>
             <div id="exposure-table" aria-label="等效快门和光圈组合"></div>
-            <div id="reciprocity-note" class="subtle"></div>
+            <div id="reciprocity-details" class="subtle">
+              <span id="reciprocity-note"></span>
+              <a id="reciprocity-source" target="_blank" rel="noopener noreferrer" hidden>补偿资料</a>
+            </div>
+            <p id="dim-meter" class="subtle amber" hidden>光线极暗，当前测光读数可能不稳定。</p>
             <div id="iso-heading">
               <span>ISO</span
               ><button id="iso-lock" class="quiet amber">已锁定 · 解锁</button>
@@ -653,9 +668,102 @@
         </p>
       </form>
     </dialog>
+    <dialog id="more" aria-labelledby="more-title">
+      <div class="dialog-title">
+        <h2 id="more-title">更多</h2>
+        <button class="quiet" data-close="more" aria-label="关闭">×</button>
+      </div>
+      <fieldset>
+        <legend>光损补偿</legend>
+        <label>光损补偿来源
+          <select id="loss-source">
+            <option value="geometric">滤镜与皮腔</option>
+            <option value="measured" disabled>毛玻璃实测</option>
+          </select>
+        </label>
+        <div id="geometric-loss-controls" class="form-grid">
+          <label>滤镜档数（EV）<input id="filter-stops" type="number" min="0" max="24" step="any" value="0" /></label>
+          <label>滤镜因子（×）<input id="filter-factor" type="number" min="1" max="16777216" step="any" value="1" /></label>
+          <label>镜头主平面至胶片距离（mm，0 关闭）<input id="bellows-draw" type="number" min="0" max="4000" step="any" value="0" /></label>
+        </div>
+        <output id="loss-info" class="amber"></output>
+      </fieldset>
+      <details id="ground-tools" class="more-section">
+        <summary>毛玻璃点测光</summary>
+        <p class="subtle">先在取景器冻结并测量均匀参考面。大画幅相机对焦于无限远，取下滤镜，手机贴住参考面在毛玻璃上的像并遮光。</p>
+        <div class="form-grid">
+          <label>参考测光点<select id="ground-reference"></select></label>
+          <label>无限远校准光圈 f/<input id="ground-aperture" type="number" min="0.5" max="256" step="any" value="8" /></label>
+        </div>
+        <button id="ground-calibrate">采集无限远参考</button>
+        <p id="ground-profile" class="subtle"></p>
+        <p class="subtle">实测时使用拍摄光圈，手机镜头贴在要测量的物点处。屏幕会显示黑色，测量时仍需遮光。</p>
+        <div class="form-grid">
+          <label>实拍光圈 f/<input id="ground-working" type="number" min="0.5" max="256" step="any" value="8" /></label>
+          <label>遮光倒计时<select id="ground-delay">
+            <option value="3">3 秒</option><option value="5" selected>5 秒</option>
+            <option value="10">10 秒</option><option value="15">15 秒</option><option value="30">30 秒</option>
+          </select></label>
+        </div>
+        <div class="actions">
+          <button id="ground-measure" disabled>黑屏并测量</button>
+          <button id="ground-compare" hidden>回取景器测同一物点</button>
+        </div>
+        <p id="ground-result" class="amber" role="status"></p>
+        <a id="ground-source" target="_blank" rel="noopener noreferrer" hidden>补偿资料</a>
+      </details>
+      <details id="framing-tools" class="more-section">
+        <summary>构图快照</summary>
+        <p class="subtle">快照保存在当前浏览器，可叠在取景画面上比对构图。</p>
+        <div class="actions">
+          <button id="snapshot-save">保存当前构图</button>
+          <button id="snapshot-hide" class="quiet" hidden>关闭当前叠影</button>
+        </div>
+        <label for="overlay-opacity">叠影透明度 <output id="overlay-opacity-value">40%</output></label>
+        <input id="overlay-opacity" type="range" min="20" max="60" step="20" value="40" />
+        <div id="snapshot-list"></div>
+      </details>
+      <fieldset>
+        <legend>水平尺与声音</legend>
+        <label class="check"><input id="level-enabled" type="checkbox" checked /> 显示水平尺和俯拍水平泡</label>
+        <button id="level-permission" class="quiet" hidden>启用姿态传感器</button>
+        <label class="check"><input id="meter-sound" type="checkbox" checked /> 测光确认音</label>
+        <div class="actions">
+          <button id="meter-sound-import">导入测光确认音</button>
+          <button id="meter-sound-restore">恢复 Sony α7 III 确认音</button>
+          <input id="meter-sound-file" type="file" accept="audio/*" hidden />
+        </div>
+      </fieldset>
+    </dialog>
+    <dialog id="ground-capture" aria-label="毛玻璃采样">
+      <button id="ground-abort" class="quiet">取消采样</button>
+    </dialog>
+    <dialog id="ground-confirm" aria-labelledby="ground-confirm-title">
+      <div class="dialog-title"><h2 id="ground-confirm-title">同点光损实测</h2></div>
+      <p id="ground-confirm-text"></p>
+      <div class="actions">
+        <button id="ground-apply" class="primary">应用实测值</button>
+        <button data-close="ground-confirm">重选物点</button>
+        <button id="ground-cancel">取消比对</button>
+      </div>
+    </dialog>
+    <dialog id="spot-placement" aria-labelledby="placement-title">
+      <div class="dialog-title">
+        <h2 id="placement-title">曝光放置</h2>
+        <button class="quiet" data-close="spot-placement" aria-label="关闭">×</button>
+      </div>
+      <p id="placement-point"></p>
+      <p class="subtle">把这个测光点放在指定 Zone。M 档保留光圈并计算快门。</p>
+      <div id="placement-zones" class="actions"></div>
+      <div class="actions">
+        <button id="placement-clear">恢复原测光</button>
+        <button id="spot-delete" class="quiet">删除测光点</button>
+      </div>
+    </dialog>
     <dialog id="notice">
       <div class="dialog-title"><h2 id="notice-title">测光提示</h2></div>
       <p id="notice-text"></p>
+      <a id="notice-link" target="_blank" rel="noopener noreferrer" hidden>录音来源</a>
       <button id="notice-ok" class="primary">知道了</button>
     </dialog>
     <div id="toast" role="status" aria-live="polite"></div>
