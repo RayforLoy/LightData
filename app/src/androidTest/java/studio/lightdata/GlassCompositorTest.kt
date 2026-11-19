@@ -45,11 +45,11 @@ class GlassCompositorTest {
                 }
                 val expected = if (bright) 255 else 0
                 assertEquals(expected, red(176,96))  // Center of a sharp, bright stripe
-                assertEquals(expected, red(79,96))   // The same stripe beyond the left edge
+                assertTrue(kotlin.math.abs(expected - red(79,96)) <= 4)   // The same stripe beyond the left edge
                 assertEquals(255-expected, red(79,32))
                 assertEquals(255-expected, red(159,96))
                 assertEquals(expected, red(160,96))  // Sharp one-pixel transition
-                assertTrue("Expected filtered transition beyond frame", red(95,96) in 1..254)
+                assertTrue("Expected filtered transition beyond frame", red(90,96) in 1..254)
                 assertEquals(GL_NO_ERROR,glGetError())
             }
         } finally {

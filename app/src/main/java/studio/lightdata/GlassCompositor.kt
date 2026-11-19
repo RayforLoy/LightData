@@ -13,6 +13,7 @@ internal data class GlassFrame(val left: Float, val top: Float, val right: Float
 
 /** All passes run on the preview's GL thread. Both displayed regions use the same exposure and frame. */
 internal class GlassCompositor {
+    private val blurScales = floatArrayOf(.004f, .010f, .024f)
     private val targets = IntArray(3)
     private val images = IntArray(3)
     private var sourceW = 0
@@ -116,12 +117,19 @@ internal class GlassCompositor {
         glBindTexture(GL_TEXTURE_2D, 0)
         glActiveTexture(GL_TEXTURE0)
         glViewport(0, 0, bw, bh)
-        val radius = max(1f, min(sw,sh) * .0035f)
-        for (i in 0..1) {
-            glBindFramebuffer(GL_FRAMEBUFFER, targets[i+1])
-            glBindTexture(GL_TEXTURE_2D, images[i])
-            glUniform2f(step, if (i == 0) radius/sw else 0f, if (i == 1) radius/sh else 0f)
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+        // Accumulate progressively wider kernels so fine texture disappears smoothly.
+        // Reuse the same two smaller targets; the sharp frame remains in images[0].
+        var input = images[0]
+        for (scale in blurScales) {
+            val radius = max(1f, min(sw, sh) * scale)
+            for (axis in 0..1) {
+                val output = axis + 1
+                glBindFramebuffer(GL_FRAMEBUFFER, targets[output])
+                glBindTexture(GL_TEXTURE_2D, input)
+                glUniform2f(step, if (axis == 0) radius/sw else 0f, if (axis == 1) radius/sh else 0f)
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+                input = images[output]
+            }
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         glViewport(0, 0, w, h)
