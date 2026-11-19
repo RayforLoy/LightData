@@ -30,12 +30,14 @@ internal enum class FeedbackCue(val title: String, val defaultName: String, val 
     REMOVE("删除测光点", "下行双音（合成）", R.raw.spot_off),
 }
 
+internal fun feedbackAudioAttributes(): AudioAttributes = AudioAttributes.Builder()
+    .setUsage(AudioAttributes.USAGE_MEDIA)
+    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+    .build()
+
 /** Keep decoding, permission checks and audio route queries out of the touch path. */
 internal class SoundFeedback(private val a: MainActivity) {
-    private val pool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(
-        AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-    ).build()
+    private val pool = SoundPool.Builder().setMaxStreams(1).setAudioAttributes(feedbackAudioAttributes()).build()
     private val manager = a.getSystemService(AudioManager::class.java)
     private val usbTypes = setOf(AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_ACCESSORY)
     private fun usbConnected() = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in usbTypes }

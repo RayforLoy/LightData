@@ -412,6 +412,7 @@ class MainActivity : ComponentActivity() {
         reportSession = ReportSession(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         importCue = FeedbackCue.entries.find { it.name == b?.getString("soundImportCue") } ?: FeedbackCue.METER
+        volumeControlStream = android.media.AudioManager.STREAM_MUSIC
         soundFeedback = SoundFeedback(this)
         soundEnabled = prefs.getBoolean("meterSound",true)
         pose = Pose(this)
