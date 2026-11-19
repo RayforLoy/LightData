@@ -39,8 +39,11 @@ class RecordedPanoramaTest {
     val first=read(numbers.first())
     val source=first.second.getJSONArray("source")
     val target=first.second.getJSONArray("target")
-    val mosaic=Mosaic(Field(target.getDouble(0),target.getDouble(1)),identity,first.first,defaultResponse,OpenCvScanAligner.forMode(mode))
-    val session=ScanSession(first.first,Field(target.getDouble(0),target.getDouble(1)),origin,defaultResponse,OpenCvScanAligner.forMode(mode))
+    val offset=first.second.optJSONArray("gateOffset")
+    val right=offset?.getDouble(0) ?: 0.0
+    val up=offset?.getDouble(1) ?: 0.0
+    val mosaic=Mosaic(Field(target.getDouble(0),target.getDouble(1)),identity,first.first,defaultResponse,OpenCvScanAligner.forMode(mode),right=right,up=up)
+    val session=ScanSession(first.first,Field(target.getDouble(0),target.getDouble(1)),origin,defaultResponse,OpenCvScanAligner.forMode(mode),right=right,up=up)
     val times=mutableListOf<Double>()
     val work=mutableListOf<Double>()
     var accepted=0

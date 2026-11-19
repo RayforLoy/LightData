@@ -240,6 +240,19 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
 
     override fun onDrawFrame(g: GL10?) {
         val l = look ?: return
+        drawLook(l)
+        renderedLive = l.live
+        val source = l.live ?: l.frame
+        if (source !== reported) {
+            reported = source
+            onRendered?.invoke()
+        }
+    }
+
+    internal fun renderReportFrame(l: Look, complete: (Result<android.graphics.Bitmap>) -> Unit) =
+        readReportFrame(l.frame, { drawLook(l) }, complete)
+
+    private fun drawLook(l: Look) {
         val f = l.frame
         glUseProgram(program)
         glActiveTexture(GL_TEXTURE0)
@@ -357,11 +370,5 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
         glEnableVertexAttribArray(a)
         glVertexAttribPointer(a, 2, GL_FLOAT, false, 0, quad)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-        renderedLive = live
-        val source = live ?: f
-        if (source !== reported) {
-            reported = source
-            onRendered?.invoke()
-        }
     }
 }

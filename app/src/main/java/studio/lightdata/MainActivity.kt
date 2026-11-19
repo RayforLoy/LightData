@@ -32,6 +32,14 @@ fun isoLabel(value: Double): String =
     java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
 
 class MainActivity : ComponentActivity() {
+    private lateinit var reportSession: ReportSession
+    val reportEnabled get() = reportSession.enabled
+    val reportLocationEnabled get() = reportSession.locationEnabled
+    fun setReportCaptureEnabled(enabled: Boolean) = reportSession.enable(enabled)
+    fun changeReportLocationEnabled(enabled: Boolean) = reportSession.enableLocation(enabled)
+    fun requestArchiveStorage() = reportSession.requestStorage()
+    fun archiveFinder() = reportSession.capture()
+
     internal val framingArchive by lazy { FramingArchive(java.io.File(filesDir,"framing")) }
     internal var overlayShot by mutableStateOf<FramingShot?>(null)
     internal var overlayBitmap by mutableStateOf<android.graphics.Bitmap?>(null)
@@ -97,6 +105,7 @@ class MainActivity : ComponentActivity() {
         player.start()
     }
 
+    internal val fullFinder by lazy { FullFinderSettings(prefs) }
     val prefs by lazy { getSharedPreferences("meter", MODE_PRIVATE) }
     private val profiles by lazy { ProfileStore(prefs) }
 
@@ -110,9 +119,17 @@ class MainActivity : ComponentActivity() {
     lateinit var rig: Rig
     var lenses by mutableStateOf(emptyList<Lens>())
     var current by mutableStateOf<Lens?>(null)
+    var parallax by mutableStateOf(ParallaxConfig())
+        private set
     var cameraChoice by mutableStateOf("自动")
     var format by mutableStateOf(formats[4])
     var focal by mutableDoubleStateOf(35.0)
+    var equivalentAxes by mutableStateOf(setOf(FocalAxis.DIAGONAL))
+        private set
+    fun toggleEquivalentAxis(axis: FocalAxis) {
+        equivalentAxes = if (axis in equivalentAxes) equivalentAxes - axis else equivalentAxes + axis
+        prefs.edit().putStringSet("equivalentAxes", equivalentAxes.map { it.name }.toSet()).apply()
+    }
     var mode by mutableStateOf("A")
     var manual by mutableStateOf(Exposure(1.0 / 125, 8.0, 100.0))
     var film by mutableStateOf(films.first())
@@ -138,7 +155,7 @@ class MainActivity : ComponentActivity() {
     private var recordedAccepted = 0
     private val scanShots = ScanHistory<ScanShot>(
         (Runtime.getRuntime().maxMemory()/8).coerceIn(8L*1024*1024,64L*1024*1024))
-    private fun recordShot(f: Frame, src: Field, target: Field, axes: FloatArray?, exposureMs: Double,
+    private fun recordShot(f: Frame, src: Field, gate: FinderGate, axes: FloatArray?, exposureMs: Double,
                            time: Long, guide: ScanGuide, turn: Int, cameraMeta: String?,
                            decision: String, checks: List<String>) {
 
@@ -149,7 +166,8 @@ class MainActivity : ComponentActivity() {
         val meta = org.json.JSONObject().put("camera",f.id).put("cameraEV",f.cameraEv)
             .put("registrationDecision",decision).put("overlapChecks",org.json.JSONArray(checks))
             .put("captureResult",cameraMeta?.let { org.json.JSONObject(it) })
-            .put("source",org.json.JSONArray(listOf(src.x,src.y))).put("target",org.json.JSONArray(listOf(target.x,target.y)))
+            .put("source",org.json.JSONArray(listOf(src.x,src.y))).put("target",org.json.JSONArray(listOf(gate.field.x,gate.field.y)))
+            .put("gateOffset",org.json.JSONArray(listOf(gate.right,gate.up)))
             .put("axes",axes?.let { org.json.JSONArray(it.toList()) }).put("exposureMs",exposureMs)
             .put("timeMs",time).put("displayTurn",turn).put("captures",guide.captures).put("coverage",guide.coverage)
         synchronized(scanShots) {
@@ -406,6 +424,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        reportSession = ReportSession(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         customSoundUri = prefs.getString("customSoundUri",null)?.let(android.net.Uri::parse)
         soundEnabled = prefs.getBoolean("meterSound",true)
@@ -435,11 +454,16 @@ class MainActivity : ComponentActivity() {
         filterStops = saved("filterStops", 0.0).coerceIn(0.0, 24.0)
         bellowsDrawMm = saved("bellowsDrawMm", 0.0).coerceIn(0.0, 4000.0)
         focal = saved("focal", 35.0)
+        val selectedAxes = prefs.getStringSet("equivalentAxes", null)
+        if (selectedAxes != null) equivalentAxes = FocalAxis.entries.filter { it.name in selectedAxes }.toSet()
+        parallax = ParallaxConfig(prefs.getBoolean("parallaxEnabled", false),
+            saved("parallaxX", 0.0), saved("parallaxY", 0.0), saved("parallaxZ", 0.0),
+            saved("parallaxDistance", 1000.0)).takeIf { it.valid(focal) } ?: ParallaxConfig()
         cameraChoice = prefs.getString("camera", "自动")!!
         val name = prefs.getString("format", "全幅")
         format =
             formats.find { it.name == name }
-                ?: Format("自定义", saved("width", 36.0), saved("height", 24.0))
+                ?: Format(name ?: "自定义", saved("width", 36.0), saved("height", 24.0))
         mode = storedMode(prefs.getString("mode", null))
         put("mode", mode)
         compensationThirds = prefs.getInt("compensationThirds", 0).coerceIn(-15, 15)
@@ -487,12 +511,14 @@ class MainActivity : ComponentActivity() {
         allowed =
             checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         active = true
+        reportSession.resume()
         pose.start()
         if (allowed) start()
     }
 
     override fun onPause() {
         active = false
+        reportSession.pause()
         epoch++
         pose.stop()
         rig.stop()
@@ -535,11 +561,29 @@ class MainActivity : ComponentActivity() {
 
     fun target() = field(format.w, format.h, focal)
 
-    fun selectCamera(force: Boolean = false, resumeScan: Boolean = false) {
+    fun updateParallax(config: ParallaxConfig): Boolean {
+        if (!config.valid(focal)) return false
+        if (config == parallax) return true
+        parallax = config
+        prefs.edit().putBoolean("parallaxEnabled", config.enabled)
+            .putString("parallaxX", config.xMm.toString()).putString("parallaxY", config.yMm.toString())
+            .putString("parallaxZ", config.zMm.toString()).putString("parallaxDistance", config.distanceMm.toString()).apply()
+        latestLive = null
+        placedSpotId = null
+        selectCamera(keepPreview = true)
+        return true
+    }
+
+    fun selectCamera(force: Boolean = false, resumeScan: Boolean = false, keepPreview: Boolean = false) {
         val goal = target()
         val next =
             lenses.find { it.id == cameraChoice }
-                ?: lenses.filter { it.view.covers(goal) }.minByOrNull { it.view.x }
+                ?: lenses.filter { lens ->
+                    val rotation = windowManager.defaultDisplay.rotation
+                    val portrait = Math.floorMod(lens.angle - rotation * 90, 180) != 0
+                    parallax.project(if (portrait) goal.swap() else goal, focal, rotation)
+                        .coveredBy(if (portrait) lens.view.swap() else lens.view)
+                }.minByOrNull { it.view.x }
                 ?: lenses.firstOrNull()
         if (next == null) {
             message = "未找到可访问的后置摄像头"
@@ -555,7 +599,7 @@ class MainActivity : ComponentActivity() {
         frozen = false
         spots.clear()
         held = null
-        sample = null
+        if (!keepPreview || force || current != next) sample = null
         if (force || current != next) {
             current = next
             cal = profiles.load(next.id)
@@ -579,21 +623,22 @@ class MainActivity : ComponentActivity() {
         val turn = (l.angle - scanRotation * 90 + 360) % 360
         val transpose = turn % 180 != 0
         val src = if (transpose) l.view.swap() else l.view
-        val goal = if (transpose) target().swap() else target()
-        val live = LiveCapture(packet,ev,l.id,timestamp,turn,src,goal)
+        val gate = parallax.project(if (transpose) target().swap() else target(), focal, scanRotation)
+        val goal = gate.field
+        val live = LiveCapture(packet,ev,l.id,timestamp,turn,src,goal,gate.right,gate.up)
         val now = android.os.SystemClock.elapsedRealtime()
         val displayTurn = Math.floorMod(scanRotation - rot, 4) * 90
         val scan = request?.let {
             val frame by lazy(LazyThreadSafetyMode.NONE) { live.panoramaFrame() }
             val axes = pose.axes(scanRotation, packet.poseTimestampNs)
             val session = it.session ?: ScanSession(frame, goal, axes, response, OpenCvScanAligner.forMode(scanAlgorithm),
-                axes?.let(::levelReading) ?: pose.level(scanRotation)).also { s -> it.session = s }
+                axes?.let(::levelReading) ?: pose.level(scanRotation), gate.right, gate.up).also { s -> it.session = s }
             if (it.reanchor) { session.resumeTracking(); it.reanchor = false }
             val time = if (timestamp > 0) timestamp / 1_000_000 else now
             var candidate: Frame? = null
             val shown = session.capture(src,axes,time,live::trackingImage,packet.exposureMs) { frame.also { candidate = it } }
             val guide = session.guide(displayTurn).copy(lowLight = packet.panoramaLowLight)
-            if (recordScan) candidate?.let { recordShot(it,src,goal,axes,packet.exposureMs,time,guide,displayTurn,packet.scanMetadata,
+            if (recordScan) candidate?.let { recordShot(it,src,gate,axes,packet.exposureMs,time,guide,displayTurn,packet.scanMetadata,
                 session.lastCandidateDecision,session.lastCandidateChecks) }
             shown to guide
         }
@@ -637,7 +682,7 @@ class MainActivity : ComponentActivity() {
         val out = measurement.frame
         val still = if (scan != null) stillDetector.observe(out,pose.matrix,now)
             else stillDetector.observe(live.signature(),Triple(l.id,live.width,live.height),pose.matrix,now)
-        val result = Sample(out, measurement.hist, !src.covers(goal), scan?.second,
+        val result = Sample(out, measurement.hist, !gate.coveredBy(src), scan?.second,
             still, packet.w, packet.h, if (scan == null) live else null)
         runOnUiThread {
             if (!active || token != epoch || frozen) return@runOnUiThread
@@ -707,7 +752,7 @@ class MainActivity : ComponentActivity() {
             current.live?.let { original ->
                 val it = previewView.get()?.renderedLive?.takeIf { capture ->
                     capture.id == original.id && capture.width == original.width &&
-                        capture.height == original.height && capture.turn == original.turn
+                        capture.height == original.height && capture.turn == original.turn && capture.gate.contentEquals(original.gate)
                 } ?: latestLive ?: original
                 frozenAxes = pose.axes(rotation,it.image.poseTimestampNs)
                 frozenLevel = frozenAxes?.let(::levelReading) ?: frozenLevel
@@ -882,7 +927,8 @@ class MainActivity : ComponentActivity() {
     ) {
         val edit =
             EditText(this).apply {
-                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or
+                    (if (range.start < 0) InputType.TYPE_NUMBER_FLAG_SIGNED else 0)
                 setSingleLine()
                 setText(isoLabel(initial))
                 selectAll()
@@ -908,21 +954,13 @@ class MainActivity : ComponentActivity() {
         dialog.show()
     }
 
-    fun formatDialog() {
-        choose(
-            "目标画幅",
-            formats.map { it.name + "   " + n(it.w) + " × " + n(it.h) + " mm" } + "自定义…",
-        ) { i ->
-            if (i < formats.size) applyFormat(formats[i])
-            else
-                choose("自定义画幅单位", listOf("毫米", "英寸")) { u ->
-                    val factor = if (u == 1) 25.4 else 1.0
-                    input("画幅宽度", format.w / factor, .1 / factor..1500.0 / factor) { w ->
-                        input("画幅高度", format.h / factor, .1 / factor..1500.0 / factor) { h ->
-                            applyFormat(Format("自定义", mm(w, u == 1), mm(h, u == 1)))
-                        }
-                    }
-                }
+    fun formatDialog() = selectFormatCategory()
+
+    fun customIsoDialog() {
+        if (frozen) { notifyUser("请先退出点测光"); return }
+        input(if (isoLocked) "自定义 ISO（应用后解锁）" else "自定义 ISO", manual.iso, .001..10000000.0) {
+            if (isoLocked) toggleIsoLock()
+            setValues(manual.copy(iso = it))
         }
     }
 
@@ -930,7 +968,8 @@ class MainActivity : ComponentActivity() {
         input("镜头实际焦距（mm）", focal, 1.0..5000.0) {
             focal = it
             put("focal", it)
-            selectCamera()
+            if (!parallax.valid(focal)) updateParallax(parallax.copy(distanceMm = Double.POSITIVE_INFINITY))
+            else selectCamera()
         }
     }
 

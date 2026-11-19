@@ -232,6 +232,8 @@ internal class Mosaic(
     private val initial: Frame,
     private val response: DoubleArray = defaultResponse,
     private val aligner: ScanAligner? = null,
+    private val right: Double = 0.0,
+    private val up: Double = 0.0,
 ) {
     private val references = if (aligner?.rawReferences==true) ScanReferences() else null
     fun close() { references?.close() }
@@ -242,8 +244,8 @@ internal class Mosaic(
     private val confidence = FloatArray(w * h)
     private val tileCount = IntArray(GRID_WIDTH * GRID_HEIGHT)
     private val tileSize = IntArray(GRID_WIDTH * GRID_HEIGHT)
-    private val xs = DoubleArray(w) { (2 * (it + .5) / w - 1) * bounds.x }
-    private val ys = DoubleArray(h) { (1 - 2 * (it + .5) / h) * bounds.y }
+    private val xs = DoubleArray(w) { (2 * (it + .5) / w - 1) * bounds.x + right }
+    private val ys = DoubleArray(h) { (1 - 2 * (it + .5) / h) * bounds.y + up }
     private var count = 0
     val coverage
         get() = count.toDouble() / atlas.size
@@ -266,7 +268,7 @@ internal class Mosaic(
     fun aim(pose: FloatArray): FinderPoint {
         val r = relative(center, pose)
         val z = max(.001, r[8])
-        return FinderPoint(.5 - .5 * r[2] / (bounds.x * z), .5 + .5 * r[5] / (bounds.y * z))
+        return FinderPoint(.5 - .5 * (r[2] / z + right) / bounds.x, .5 + .5 * (r[5] / z + up) / bounds.y)
     }
 
     fun nextUncovered(aim: FinderPoint, field: Field): FinderPoint? {
@@ -280,13 +282,13 @@ internal class Mosaic(
             if (tileSize[i] == tileCount[i]) continue
             val x = (i % GRID_WIDTH + .5) / GRID_WIDTH
             val y = (i / GRID_WIDTH + .5) / GRID_HEIGHT
-            val yaw = atan((2*x-1)*bounds.x)
-            val pitch = atan((2*y-1)*bounds.y*cos(yaw))
+            val yaw = atan((2*x-1)*bounds.x + right)
+            val pitch = atan(((2*y-1)*bounds.y - up)*cos(yaw))
             var empty = 0.0
             var occupied = 0.0
             for (j in coverage.indices) {
-                val dx = (2*(j%GRID_WIDTH+.5)/GRID_WIDTH-1)*bounds.x
-                val dy = (2*(j/GRID_WIDTH+.5)/GRID_HEIGHT-1)*bounds.y
+                val dx = (2*(j%GRID_WIDTH+.5)/GRID_WIDTH-1)*bounds.x + right
+                val dy = (2*(j/GRID_WIDTH+.5)/GRID_HEIGHT-1)*bounds.y - up
                 val forward = cos(yaw)+dx*sin(yaw)
                 val depth = forward*cos(pitch)+dy*sin(pitch)
                 if (depth <= 0 || abs(dx*cos(yaw)-sin(yaw)) > field.x*depth ||
@@ -441,8 +443,8 @@ internal class Mosaic(
                 current[i] = luma(frame.sample((x+.5)/width,(y+.5)/height)).toByte()
                 val z = p.depth(dx,dy)
                 if (z <= .001) continue
-                val u = p.u(dx,dy,z)
-                val v = p.v(dx,dy,z)
+                val u = p.u(dx,dy,z) - right*p.fx
+                val v = p.v(dx,dy,z) + up*p.fy
                 if (u < 0 || u >= w || v < 0 || v >= h) continue
                 val rgb = atlas[v.toInt()*w+u.toInt()]
                 if (rgb == 0) continue
@@ -562,8 +564,8 @@ internal class Mosaic(
                 val row = i / GRID_WIDTH
                 var outside = 31
                 for (cx in col..col+1) for (cy in row..row+1) {
-                    val dx = (2.0*cx/GRID_WIDTH-1)*bounds.x
-                    val dy = (1-2.0*cy/GRID_HEIGHT)*bounds.y
+                    val dx = (2.0*cx/GRID_WIDTH-1)*bounds.x + right
+                    val dy = (1-2.0*cy/GRID_HEIGHT)*bounds.y + up
                     val z = p.depth(dx,dy)
                     val px = p.r[0]*dx+p.r[1]*dy-p.r[2]
                     val py = p.r[3]*dx+p.r[4]*dy-p.r[5]
@@ -666,29 +668,35 @@ internal class Mosaic(
     // initial camera X axis preserves the framing's roll, even in a top-down scan.
     fun startMark(pose: FloatArray, turn: Int): StartMark? {
         val r = relative(pose, center)
-        val z = r[8]
+        val z = r[8] - r[6]*right - r[7]*up
         if (z <= .001) return null
-        val p = FinderPoint(.5 - .5*r[2]/(z*target.x), .5 + .5*r[5]/(z*target.y))
+        val x = r[0]*right + r[1]*up - r[2]
+        val y = r[3]*right + r[4]*up - r[5]
+        val p = FinderPoint(.5 + .5*(x/z - right)/target.x, .5 - .5*(y/z - up)/target.y)
         if (p.x !in 0.0..1.0 || p.y !in 0.0..1.0) return null
-        val dx = (r[0]*z - r[2]*r[6])/target.x
-        val dy = -(r[3]*z - r[5]*r[6])/target.y
+        val dx = (r[0]*z + x*r[6])/target.x
+        val dy = -(r[3]*z + y*r[6])/target.y
         val right = FinderPoint(p.x + dx,p.y + dy).turned(turn)
         val projected = p.turned(turn)
         return StartMark(projected, FinderPoint(right.x - projected.x,right.y - projected.y))
     }
 
     fun homeDirection(pose: FloatArray): FinderPoint? {
+        val current = relative(center,pose)
+        val depth = current[8] - current[6]*right - current[7]*up
+        if (depth > .001) {
+            val tx = (current[0]*right + current[1]*up - current[2])/depth - right
+            val ty = (current[3]*right + current[4]*up - current[5])/depth - up
+            val x = floor((.5 + .5*tx/bounds.x)*w).toInt()
+            val y = floor((.5 - .5*ty/bounds.y)*h).toInt()
+            if (x in 0 until w && y in 0 until h && atlas[y*w+x] != 0) return null
+        }
         val r = relative(pose, center)
-        val aim = aim(pose)
-        val x = floor(aim.x*w).toInt()
-        val y = floor(aim.y*h).toInt()
-        if (r[8] > 0 && x in 0 until w && y in 0 until h && atlas[y*w+x] != 0) return null
-        // The center ray in the current camera's right/down coordinates. At the
-        // antipode either turn is valid. At the starting center no arrow is needed.
-        val dx = -r[2]
-        val dy = r[5]
+        val z = r[8] - r[6]*right - r[7]*up
+        val dx = r[0]*right + r[1]*up - r[2] - right*z
+        val dy = -(r[3]*right + r[4]*up - r[5] - up*z)
         val length = hypot(dx,dy)
-        if (length < 1e-6) return if (r[8] < 0) FinderPoint(1.0,0.0) else null
+        if (length < 1e-6) return if (z < 0) FinderPoint(1.0,0.0) else null
         return FinderPoint(dx/length,dy/length)
     }
 
@@ -699,22 +707,22 @@ internal class Mosaic(
         val buffer = IntArray(width * height)
         // The homography numerators and depth advance linearly across a scanline.
         val step = 2*target.x/width
-        val left = (.5*step-target.x)
+        val left = .5*step - target.x + right
         val fx = w/(2*bounds.x)
         val fy = h/(2*bounds.y)
         val stepU = r[0]*step*fx
         val stepV = -r[3]*step*fy
         val stepZ = -r[6]*step
         for (y in 0 until height) {
-            val dy = (1 - 2*(y+.5)/height)*target.y
+            val dy = (1 - 2*(y+.5)/height)*target.y + up
             var z = r[8]-r[6]*left-r[7]*dy
             var u = (r[0]*left+r[1]*dy-r[2])*fx
             var v = -(r[3]*left+r[4]*dy-r[5])*fy
             for (x in 0 until width) {
                 if (z > 0) {
                     val inverse = 1/z
-                    val ax = w*.5+u*inverse
-                    val ay = h*.5+v*inverse
+                    val ax = w*.5 + u*inverse - right*fx
+                    val ay = h*.5 + v*inverse + up*fy
                     if (ax >= 0 && ax < w && ay >= 0 && ay < h)
                         buffer[y*width+x] = atlas[ay.toInt()*w+ax.toInt()]
                 }
@@ -731,9 +739,10 @@ internal class Mosaic(
 // Its atlas and angular reference remain valid if Android rotates the window.
 internal class ScanSession(center: Frame, target: Field, origin: FloatArray?, response: DoubleArray,
                            private val aligner: ScanAligner? = null,
-                           private val startLevel: LevelReading? = origin?.let(::levelReading)) {
+                           private val startLevel: LevelReading? = origin?.let(::levelReading),
+                           right: Double = 0.0, up: Double = 0.0) {
     private val identity = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
-    private val mosaic = Mosaic(target, identity, center, response, aligner)
+    private val mosaic = Mosaic(target, identity, center, response, aligner, right, up)
     fun close() = mosaic.close()
     private var orientation = identity
     private var sensorOrigin = origin

@@ -27,16 +27,16 @@ private fun Choice(text:String, onClick:()->Unit) {
 internal fun MoreToolsDialog(a:MainActivity) {
     val page=a.toolsPage
     fun back() {
-        a.toolsPage=when(page) { "ground","flash" -> "lab"; "lab","shots" -> "more"; else -> "" }
+        a.toolsPage=when(page) { "ground","flash" -> "lab"; "lab","shots","parallax","reports" -> "more"; else -> "" }
     }
     Dialog(onDismissRequest={ back() },properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Column(Modifier.fillMaxSize().background(Color(0xff151617)).windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically) {
                 Box(Modifier.clickable { back() }.padding(12.dp)) { TextLine("‹ 返回",amber) }
-                TextLine(when(page) { "shots"->"构图快照"; "lab"->"实验室"; "ground"->"对焦屏点测光"; "flash"->"闪光灯测光"; else->"更多" })
+                TextLine(when(page) { "reports"->"留档"; "parallax"->"取景视差补偿"; "shots"->"构图快照"; "lab"->"实验室"; "ground"->"对焦屏点测光"; "flash"->"闪光灯测光"; else->"更多" })
             }
             key(page) {
-                Column(Modifier.verticalScroll(rememberScrollState()).fillMaxWidth()) {
+                if (page == "reports") ReportArchivePanel(a) else Column(Modifier.verticalScroll(rememberScrollState()).fillMaxWidth()) {
                     when(page) {
                         "ground" -> GroundLabPanel(a) { a.toolsPage="" }
                         "flash" -> FlashLabPanel(a)
@@ -44,8 +44,15 @@ internal fun MoreToolsDialog(a:MainActivity) {
                             Choice("对焦屏点测光") { a.toolsPage="ground" }
                             Choice("闪光灯测光") { a.toolsPage="flash" }
                         }
+                        "parallax" -> ParallaxSettings(a)
                         "shots" -> ShotsPanel(a)
                         else -> {
+                            Choice(if (a.fullFinder.enabled) "退出全屏取景" else "全屏取景") {
+                                a.fullFinder.toggle()
+                                a.toolsPage = ""
+                            }
+                            Choice("取景视差补偿" + if (a.parallax.enabled) " · 开启" else "") { a.toolsPage="parallax" }
+                            Choice("留档") { a.toolsPage="reports" }
                             Choice("构图快照") { a.toolsPage="shots" }
                             Choice("实验室") { a.toolsPage="lab" }
                             OpticsCompensationControls(a)

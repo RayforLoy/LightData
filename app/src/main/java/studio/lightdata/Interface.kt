@@ -46,7 +46,7 @@ private val mono = FontFamily.Monospace
 private fun Label(
     s: String,
     sz: Int = 12,
-    color: Color = paper,
+    color: Color = LocalGlassPalette.current?.text ?: paper,
     modifier: Modifier = Modifier,
     bold: Boolean = false,
     monoType: Boolean = false,
@@ -119,7 +119,12 @@ fun Instrument(a: MainActivity) {
         val content = @Composable {
             Panels(a, sideBySide, prefix, if (square) .5f else .6f, if (square) .5f else .46f)
         }
-        if (landscape) {
+        if (a.fullFinder.enabled) {
+            FullFinderScreen(a, landscape,
+                finder = { Finder(a, imageOnly = true) },
+                instruments = { FinderHeader(a); FinderFooter(a); Toolbar(a, false) },
+                histogram = { Histogram(a) }, meter = { Meter(a) })
+        } else if (landscape) {
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Toolbar(a, true)
                 Box(Modifier.weight(1f)) { content() }
@@ -154,6 +159,7 @@ private fun Panels(a: MainActivity, sideBySide: Boolean, prefix: String, default
                 Split(a, prefix + "1", true, w, defaultP)
                 Column(Modifier.weight(1 - p).fillMaxHeight()) {
                     Box(Modifier.weight(q)) { Histogram(a) }
+                    if (a.parallax.enabled) ParallaxDistanceWheel(a, Modifier.fillMaxWidth().height(44.dp))
                     Split(a, prefix + "2", false, h, defaultQ)
                     Box(Modifier.weight(1 - q)) { Meter(a) }
                 }
@@ -164,6 +170,7 @@ private fun Panels(a: MainActivity, sideBySide: Boolean, prefix: String, default
                 Split(a, prefix + "1", false, h, defaultP)
                 Row(Modifier.fillMaxWidth().weight(1 - p)) {
                     Box(Modifier.weight(q)) { Histogram(a) }
+                    if (a.parallax.enabled) ParallaxDistanceWheel(a, Modifier.fillMaxHeight().width(42.dp), vertical = true)
                     Split(a, prefix + "2", true, w, defaultQ)
                     Box(Modifier.weight(1 - q)) { Meter(a) }
                 }
@@ -280,31 +287,106 @@ private fun Tool(title: String, type: Int, active: Boolean, click: () -> Unit) {
 }
 
 @Composable
-private fun Finder(a: MainActivity) {
+private fun FinderHeader(a: MainActivity) {
+    val s = a.sample
+    val f = s?.frame
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        FlowRow(Modifier.weight(1f), itemVerticalAlignment = Alignment.CenterVertically) {
+            Action(a.format.name + " ▾") { if (!a.frozen) a.formatDialog() }
+            Action(n(a.focal) + " mm") { if (!a.frozen) a.changeFocal() }
+            if (!a.format.isFullFrame) {
+                for (axis in FocalAxis.entries) if (axis in a.equivalentAxes) {
+                    val mm = a.format.equivalentFocal(a.focal, axis)
+                    Label("${axis.label}等效 ${n(round(mm * 10) / 10)} mm", 11, muted,
+                        Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                }
+            }
+        }
+        Label(when {
+            a.frozen -> "● HOLD"
+            s?.scan?.coverage == 1.0 -> "● 拼接构图"
+            a.scanActive -> "● 扫描采集"
+            s?.missing == true -> "○ 待确认中心"
+            f == null -> "○ WAIT"
+            else -> "● LIVE"
+        }, 10, if (a.frozen) amber else muted, monoType = true)
+    }
+}
+
+@Composable
+private fun FinderFooter(a: MainActivity) {
+    val s = a.sample
+        if (a.pendingGroundEv != null) Row(verticalAlignment = Alignment.CenterVertically) {
+            Label("取下手机，对准实景，点选毛玻璃上测量的同一物点", 12, amber, Modifier.weight(1f).padding(horizontal = 6.dp))
+            Action("取消比对") { a.cancelGroundComparison() }
+        }
+        if (a.frozen) {
+            if (a.spots.isEmpty()) Label("点按画面添加测光点", 12, amber, Modifier.padding(horizontal = 10.dp))
+            else Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                a.spots.forEach { point ->
+                    val relative = point.ev - a.effectiveMiddleEv
+                    val headroom = a.film.high - relative
+                    val margin = if (headroom >= 0) "距上限 " + n(headroom) else "超上限 " + n(-headroom)
+                    val label = "#${point.id}  " + n(point.ev) + " EV100 · Zone " + n(relative + 5) + "  ·  " + margin + " EV"
+                    Label(label, 11, spotColor(point.id), Modifier.clickable {
+                        val zones = listOf("0","I","II","III","IV","V","VI","VII","VIII","IX","X")
+                        a.choose("放置 #${point.id} · " + n(point.ev) + " EV100", zones.map { "Zone $it" } + "恢复原测光") {
+                            if (it == zones.size) a.clearPlacement() else a.placeSpot(point, it)
+                        }
+                    }.padding(horizontal = 7.dp, vertical = 6.dp), bold = point.id == a.placedSpotId)
+                }
+                Label("点标签放置分区",10,muted)
+            }
+        }
+        if (a.scanActive && s?.scan?.lowLight == true && s.scan.coverage < 1 && !a.frozen)
+            Label("环境过暗，拼接成功率会下降 · 可补光或放慢转动", 12, amber, Modifier.padding(horizontal = 10.dp))
+        if ((s?.missing == true || a.scanActive) && !a.frozen && !a.runningCal)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Action(if (!a.scanActive) "确认中心 · 开始拼接" else "退出拼接", !a.scanActive) { a.toggleScan() }
+                val guide = s?.scan
+                Label(
+                    when {
+                        !a.scanActive -> "目标超出镜头视角，请对准画面中心"
+                        guide == null -> "正在采集中心画面"
+                        guide.homeDirection != null && guide.coverage >= 1 -> "按箭头转回拼接中心"
+                        guide.needsOverlap -> "请移回已拍区域，保留重叠"
+                        guide.coverage >= 1 -> "已完成 · 转动设备二次构图"
+                        guide.settling -> "请放慢转动"
+                        else -> "将白圈缓慢移向黄菱形"
+                    },
+                    11, muted, Modifier.weight(1f),
+                )
+                if (guide != null && a.scanActive) {
+                    Column(horizontalAlignment=Alignment.End) {
+                        Label("${(guide.coverage * 100).toInt()}%", 13, amber, monoType=true)
+                        Label("${guide.captures} 帧", 10, muted)
+                    }
+                }
+            }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Label(
+                if (a.message.isNotEmpty()) a.message else a.current?.label ?: "等待镜头",
+                10,
+                if (a.message.isNotEmpty()) amber else muted,
+                Modifier.weight(1f),
+            )
+            Label(if (!a.preview) "取景" else if (a.useLut) a.lutStatus else "亮度模拟", 10, if (a.preview) amber else muted)
+        }
+}
+
+@Composable
+private fun Finder(a: MainActivity, imageOnly: Boolean = false) {
     val s = a.sample
     val f = s?.frame
     Column(Modifier.fillMaxSize().background(Color(0xff0a0b0c))) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Action(a.format.name + " ▾") { if (!a.frozen) a.formatDialog() }
-            Action(n(a.focal) + " mm") { if (!a.frozen) a.changeFocal() }
-            Spacer(Modifier.weight(1f))
-            Label(
-                when {
-                    a.frozen -> "● HOLD"
-                    s?.scan?.coverage == 1.0 -> "● 拼接构图"
-                    a.scanActive -> "● 扫描采集"
-                    s?.missing == true -> "○ 待确认中心"
-                    f == null -> "○ WAIT"
-                    else -> "● LIVE"
-                },
-                10,
-                if (a.frozen) amber else muted,
-                monoType = true,
-            )
-        }
+        if (!imageOnly) FinderHeader(a)
         BoxWithConstraints(
             Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.Center,
@@ -345,8 +427,8 @@ private fun Finder(a: MainActivity) {
                         },
                     )
                     Canvas(
-                        Modifier.fillMaxSize().pointerInput(a.frozen, a.pendingGroundEv) {
-                            detectTapGestures {
+                        Modifier.fillMaxSize().pointerInput(a.frozen, a.pendingGroundEv, a.reportEnabled) {
+                            detectTapGestures(onDoubleTap = if (a.reportEnabled) { _ -> a.archiveFinder() } else null) {
                                 if (a.pendingGroundEv != null) {
                                     a.compareGroundPoint(it.x / size.width.toDouble(), it.y / size.height.toDouble())
                                 } else if (a.frozen)
@@ -465,73 +547,19 @@ private fun Finder(a: MainActivity) {
                 Action("启用相机 / 重试", true) { a.requestCamera() }
             else Label("正在等待相机", 13, muted)
         }
-        if (a.pendingGroundEv != null) Row(verticalAlignment = Alignment.CenterVertically) {
-            Label("取下手机，对准实景，点选毛玻璃上测量的同一物点", 12, amber, Modifier.weight(1f).padding(horizontal = 6.dp))
-            Action("取消比对") { a.cancelGroundComparison() }
-        }
-        if (a.frozen) {
-            if (a.spots.isEmpty()) Label("点按画面添加测光点", 12, amber, Modifier.padding(horizontal = 10.dp))
-            else Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                a.spots.forEach { point ->
-                    val relative = point.ev - a.effectiveMiddleEv
-                    val headroom = a.film.high - relative
-                    val margin = if (headroom >= 0) "距上限 " + n(headroom) else "超上限 " + n(-headroom)
-                    val label = "#${point.id}  " + n(point.ev) + " EV100 · Zone " + n(relative + 5) + "  ·  " + margin + " EV"
-                    Label(label, 11, spotColor(point.id), Modifier.clickable {
-                        val zones = listOf("0","I","II","III","IV","V","VI","VII","VIII","IX","X")
-                        a.choose("放置 #${point.id} · " + n(point.ev) + " EV100", zones.map { "Zone $it" } + "恢复原测光") {
-                            if (it == zones.size) a.clearPlacement() else a.placeSpot(point, it)
-                        }
-                    }.padding(horizontal = 7.dp, vertical = 6.dp), bold = point.id == a.placedSpotId)
-                }
-                Label("点标签放置分区",10,muted)
-            }
-        }
-        if (a.scanActive && s?.scan?.lowLight == true && s.scan.coverage < 1 && !a.frozen)
-            Label("环境过暗，拼接成功率会下降 · 可补光或放慢转动", 12, amber, Modifier.padding(horizontal = 10.dp))
-        if ((s?.missing == true || a.scanActive) && !a.frozen && !a.runningCal)
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Action(if (!a.scanActive) "确认中心 · 开始拼接" else "退出拼接", !a.scanActive) { a.toggleScan() }
-                val guide = s?.scan
-                Label(
-                    when {
-                        !a.scanActive -> "目标超出镜头视角，请对准画面中心"
-                        guide == null -> "正在采集中心画面"
-                        guide.homeDirection != null && guide.coverage >= 1 -> "按箭头转回拼接中心"
-                        guide.needsOverlap -> "请移回已拍区域，保留重叠"
-                        guide.coverage >= 1 -> "已完成 · 转动设备二次构图"
-                        guide.settling -> "请放慢转动"
-                        else -> "将白圈缓慢移向黄菱形"
-                    },
-                    11, muted, Modifier.weight(1f),
-                )
-                if (guide != null && a.scanActive) {
-                    Column(horizontalAlignment=Alignment.End) {
-                        Label("${(guide.coverage * 100).toInt()}%", 13, amber, monoType=true)
-                        Label("${guide.captures} 帧", 10, muted)
-                    }
-                }
-            }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Label(
-                if (a.message.isNotEmpty()) a.message else a.current?.label ?: "等待镜头",
-                10,
-                if (a.message.isNotEmpty()) amber else muted,
-                Modifier.weight(1f),
-            )
-            Label(if (!a.preview) "取景" else if (a.useLut) a.lutStatus else "亮度模拟", 10, if (a.preview) amber else muted)
-        }
+        if (!imageOnly) FinderFooter(a)
     }
 }
 
 @Composable
 private fun Histogram(a: MainActivity) {
+    val palette = LocalGlassPalette.current
+    val paper = palette?.text ?: paper
+    val muted = palette?.secondary ?: muted
+    val line = palette?.grid ?: line
+    val amber = palette?.accent ?: amber
+    val red = palette?.over ?: red
+    val green = palette?.under ?: green
     val sample = a.sample
     val film = a.film
     val middle = a.effectiveMiddleEv
@@ -546,7 +574,7 @@ private fun Histogram(a: MainActivity) {
     val peak = bins.max().coerceAtLeast(1)
     val densityMax = ceil(film.dots.maxOf { it.second })
     Column(
-        Modifier.fillMaxSize().background(ink).padding(5.dp)
+        Modifier.fillMaxSize().background(if (palette == null) ink else Color.Transparent).padding(5.dp)
             .border(1.dp, if (a.cal == null) red else line).padding(7.dp)
     ) {
         Label("曝光直方图", 15, bold = true)
@@ -702,7 +730,7 @@ private fun Histogram(a: MainActivity) {
             }
             val maxLabels = (w / 33.dp.toPx()).toInt().coerceAtLeast(2)
             val step = listOf(1, 2, 3, 5, 8, 10, 16, 32).first { it * maxLabels >= chart.span }
-            paint.color = android.graphics.Color.LTGRAY
+            paint.color = muted.toArgb()
             for (tick in ceil(chart.left / step).toInt()..floor(chart.right / step).toInt()) {
                 val ev = tick * step
                 val label = ev.toString()
@@ -713,7 +741,7 @@ private fun Histogram(a: MainActivity) {
             if (sample != null) {
                 val zones = listOf("0","I","II","III","IV","V","VI","VII","VIII","IX","X")
                 val gap = max(1, ceil(28.dp.toPx() * chart.span / max(w,1f)).toInt())
-                paint.color = android.graphics.Color.rgb(243,183,96)
+                paint.color = amber.toArgb()
                 for (zone in zones.indices) {
                     if ((zone - 5) % gap != 0) continue
                     val xx = (chart.fraction(middle + zone - 5) * w).toFloat()
@@ -733,8 +761,10 @@ private fun Histogram(a: MainActivity) {
 
 @Composable
 private fun Meter(a: MainActivity) {
+    val palette = LocalGlassPalette.current
+    val amber = palette?.accent ?: amber
     val e = a.exposure
-    Column(Modifier.fillMaxSize().background(panel).padding(horizontal = 6.dp, vertical = 3.dp)) {
+    Column(Modifier.fillMaxSize().background(if (palette == null) panel else Color.Transparent).padding(horizontal = 6.dp, vertical = 3.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             for (mode in listOf("A", "S", "M")) {
                 MeterButton(mode, a.mode == mode, !a.frozen, Modifier.weight(1f)) { a.modeTo(mode) }
@@ -760,6 +790,7 @@ private fun Meter(a: MainActivity) {
         val iso = (speeds + a.manual.iso).distinct().sorted()
         Wheel("ISO", iso, e.iso, !a.frozen && !a.isoLocked, ::isoLabel, Modifier.weight(1f),
             lockLabel = if (a.isoLocked) "已锁定 · 解锁" else "锁定至 " + isoLabel(a.filmIso),
+            onLongPress = if (a.frozen) null else a::customIsoDialog,
             onLock = { if (!a.frozen) a.toggleIsoLock() }) {
             a.setValues(a.manual.copy(iso = it))
         }
@@ -768,15 +799,23 @@ private fun Meter(a: MainActivity) {
 
 @Composable
 private fun MeterButton(text: String, selected: Boolean, enabled: Boolean, modifier: Modifier, action: () -> Unit) {
+    val palette = LocalGlassPalette.current
+    val ink = palette?.text ?: ink
+    val paper = palette?.text ?: paper
+    val selectedFill = palette?.accent ?: amber
     Box(modifier.padding(1.dp).height(31.dp).clip(RoundedCornerShape(4.dp))
-        .background(if (selected) amber else ink).clickable(enabled = enabled, onClick = action),
+        .background(if (selected) selectedFill else palette?.button ?: ink).clickable(enabled = enabled, onClick = action),
         contentAlignment = Alignment.Center) {
-        Label(text, 12, if (selected) ink else paper, bold = true)
+        Label(text, 12, if (selected) palette?.backdrop ?: ink else paper, bold = true)
     }
 }
 
 @Composable
 private fun ExposureCompensation(thirds: Int, residual: Double?, enabled: Boolean, update: (Int) -> Unit) {
+    val palette = LocalGlassPalette.current
+    val muted = palette?.secondary ?: muted
+    val line = palette?.grid ?: line
+    val amber = palette?.accent ?: amber
     val change by rememberUpdatedState(update)
     Column(Modifier.fillMaxWidth().semantics {
         contentDescription = "曝光补偿"
@@ -822,6 +861,11 @@ private fun ExposureCompensation(thirds: Int, residual: Double?, enabled: Boolea
 
 @Composable
 private fun ExposureTable(a: MainActivity, e: Exposure, m: Modifier) {
+    val palette = LocalGlassPalette.current
+    val paper = palette?.text ?: paper
+    val muted = palette?.secondary ?: muted
+    val amber = palette?.accent ?: amber
+    val line = palette?.grid ?: line
     val pairs = remember(e) { equivalentExposures(e) }
     val selected = pairs.indexOf(e)
     val correction = remember(e.t, a.film.name) { reciprocity(a.film.name, e.t) }
@@ -916,7 +960,7 @@ private fun ExposureTable(a: MainActivity, e: Exposure, m: Modifier) {
                         Modifier.weight(1f)
                             .fillMaxHeight()
                             .padding(horizontal = 1.dp)
-                            .background(if (active) Color(0xff342c22) else Color.Transparent)
+                            .background(if (active) palette?.button ?: Color(0xff342c22) else Color.Transparent)
                             .clickable(enabled = !a.frozen) { a.selectPair(pair) }
                             .semantics {
                                 contentDescription =
@@ -989,6 +1033,7 @@ private fun ExposureTable(a: MainActivity, e: Exposure, m: Modifier) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Wheel(
     title: String,
@@ -998,9 +1043,13 @@ private fun Wheel(
     fmt: (Double) -> String,
     m: Modifier,
     lockLabel: String,
+    onLongPress: (() -> Unit)?,
     onLock: () -> Unit,
     change: (Double) -> Unit,
 ) {
+    val palette = LocalGlassPalette.current
+    val muted = palette?.secondary ?: muted
+    val amber = palette?.accent ?: amber
     val selected = values.indexOf(value).coerceAtLeast(0)
     val cb by rememberUpdatedState(change)
     val current by rememberUpdatedState(selected)
@@ -1053,9 +1102,12 @@ private fun Wheel(
                 for (i in shown) {
                     val active = i == selected
                     Box(
-                        Modifier.weight(1f).fillMaxHeight().clickable(enabled = enabled) {
-                            cb(values[i])
-                        },
+                        Modifier.weight(1f).fillMaxHeight().combinedClickable(
+                            enabled = enabled || onLongPress != null,
+                            onLongClickLabel = "自定义 ISO",
+                            onLongClick = onLongPress,
+                            onClick = { if (enabled) cb(values[i]) },
+                        ),
                         contentAlignment = Alignment.Center,
                     ) {
                         Label(
@@ -1126,6 +1178,18 @@ private fun Settings(a: MainActivity, m: Modifier) {
                 Action(label, a.logCounts == (index == 1)) {
                     a.logCounts = index == 1
                     a.prefs.edit().putBoolean("logCounts", a.logCounts).apply()
+                }
+            }
+        }
+        Label("全画幅等效焦距（可多选）", 14, paper)
+        FlowRow {
+            for (axis in FocalAxis.entries) {
+                val selected = axis in a.equivalentAxes
+                Box(Modifier.padding(2.dp).clip(RoundedCornerShape(4.dp))
+                    .background(if (selected) amber else ink)
+                    .toggleable(selected, role = Role.Checkbox) { a.toggleEquivalentAxis(axis) }
+                    .padding(horizontal = 10.dp, vertical = 7.dp)) {
+                    Label(axis.label, 12, if (selected) ink else paper)
                 }
             }
         }

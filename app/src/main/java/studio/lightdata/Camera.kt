@@ -165,6 +165,7 @@ class Rig(
     class Packet(val w: Int, val h: Int, val planes: List<Plane>, val encoding: YuvEncoding) {
         var scanMetadata: String? = null
         var panoramaLowLight = false
+        var sensorReading: SensorReading? = null
         var exposureMs = 0.0
         var poseTimestampNs = 0L
         fun pixel(x: Int, y: Int): Int {
@@ -709,6 +710,7 @@ class Rig(
                 .put("wbGains",wb?.let { org.json.JSONArray(listOf(it.red,it.greenEven,it.greenOdd,it.blue)) })
                 .toString()
         }
+        image.sensorReading = SensorReading(Exposure(time / 1e9, a, iso.toDouble()), boost)
         image.exposureMs = time/1e6
         val ev = Exposure(time / 1e9, a, iso * boost).ev
         val sensorTime = if (synced) ts else 0L

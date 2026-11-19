@@ -5,16 +5,35 @@ import kotlin.math.*
 
 data class Format(val name: String, val w: Double, val h: Double)
 
-val formats =
-    listOf(
+enum class FocalAxis(val label: String) { DIAGONAL("对角线"), WIDTH("横边"), HEIGHT("竖边") }
+
+fun Format.equivalentFocal(focal: Double, axis: FocalAxis): Double {
+    val referenceWidth = if (w >= h) 36.0 else 24.0
+    val referenceHeight = if (w >= h) 24.0 else 36.0
+    return focal * when (axis) {
+        FocalAxis.DIAGONAL -> hypot(36.0, 24.0) / hypot(w, h)
+        FocalAxis.WIDTH -> referenceWidth / w
+        FocalAxis.HEIGHT -> referenceHeight / h
+    }
+}
+
+val Format.isFullFrame: Boolean
+    get() = abs(max(w, h) - 36.0) < .000001 && abs(min(w, h) - 24.0) < .000001
+
+val formatGroups = linkedMapOf(
+    "数码" to listOf(
         Format("1 英寸", 13.2, 8.8),
         Format("M43", 17.3, 13.0),
         Format("APS-C", 23.5, 15.6),
         Format("APS-C Canon", 22.3, 14.9),
         Format("全幅", 36.0, 24.0),
+    ),
+    "数码后背" to listOf(
         Format("44×33", 44.0, 33.0),
         Format("48×36", 48.0, 36.0),
         Format("54×40", 54.0, 40.0),
+    ),
+    "胶片" to listOf(
         Format("135", 36.0, 24.0),
         Format("645", 56.0, 41.5),
         Format("6×6", 56.0, 56.0),
@@ -24,7 +43,14 @@ val formats =
         Format("6×17", 168.0, 56.0),
         Format("4×5", 120.0, 96.0),
         Format("8×10", 245.0, 194.0),
-    )
+        Format("宝丽来 i-Type / 600 / SX-70", 78.94, 76.80),
+        Format("宝丽来 Go", 47.0, 46.0),
+        Format("instax mini", 62.0, 46.0),
+        Format("instax SQUARE", 62.0, 62.0),
+        Format("instax WIDE", 99.0, 62.0),
+    ),
+)
+val formats = formatGroups.values.flatten()
 
 fun mm(value: Double, inch: Boolean) = value * if (inch) 25.4 else 1.0
 
@@ -288,6 +314,8 @@ fun customFilm(digital: Boolean, total: Double, above: Double): Film {
 
 val defaultResponse = DoubleArray(256) { log2(srgbToLinear(max(.5, it.toDouble()) / 255) / .18) }
 
+data class SensorReading(val exposure: Exposure, val postRawBoost: Double)
+
 data class Frame(
     val w: Int,
     val h: Int,
@@ -296,6 +324,7 @@ data class Frame(
     val id: String,
     val timestampNs: Long = 0,
     val encoding: YuvEncoding = YuvEncoding.default,
+    val sensorReading: SensorReading? = null,
 ) {
     fun sample(x: Double, y: Double): Int =
         pixels[(y * h).toInt().coerceIn(0, h - 1) * w + (x * w).toInt().coerceIn(0, w - 1)]
