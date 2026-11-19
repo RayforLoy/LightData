@@ -121,7 +121,7 @@ fun Instrument(a: MainActivity) {
         }
         if (a.fullFinder.enabled) {
             FullFinderScreen(a, landscape,
-                finder = { Finder(a, imageOnly = true) },
+                finderOverlay = { Finder(a, overlayOnly = true) },
                 instruments = { FinderHeader(a); FinderFooter(a); Toolbar(a, false) },
                 histogram = { Histogram(a) }, meter = { Meter(a) })
         } else if (landscape) {
@@ -382,11 +382,47 @@ private fun FinderFooter(a: MainActivity) {
 }
 
 @Composable
-private fun Finder(a: MainActivity, imageOnly: Boolean = false) {
+internal fun FinderPreview(a: MainActivity, glass: Rect? = null) {
+    val s = a.sample ?: return
+    val f = s.frame
+    val live = s.live?.let { a.latestLive ?: it }
+    val look =
+        Look(
+            f,
+            a.response,
+            (live?.ev ?: f.cameraEv) - a.effectiveMiddleEv,
+            a.film,
+            a.preview,
+            a.mode == "M",
+            a.style,
+            if (a.useLut && a.preview) a.activeAtlas?.takeIf { it.entry.file == a.variant?.file } else null,
+            live,
+        )
+    AndroidView(
+        factory = { ctx -> Preview(ctx).apply {
+            a.previewView = java.lang.ref.WeakReference(this)
+            onCubeUnavailable = { file ->
+                if (a.variant?.file == file) {
+                    a.failedLut = file
+                    a.activeAtlas = null
+                }
+            }
+        } },
+        modifier = Modifier.fillMaxSize(),
+        update = {
+            if (glass != null) it.setGlassFrame(glass.left, glass.top, glass.right, glass.bottom)
+            it.onRendered = if (a.showFps) a::markRendered else null
+            it.show(look, if (a.frozen || s.still) 1.0 else a.previewScale)
+        },
+    )
+}
+
+@Composable
+private fun Finder(a: MainActivity, overlayOnly: Boolean = false) {
     val s = a.sample
     val f = s?.frame
-    Column(Modifier.fillMaxSize().background(Color(0xff0a0b0c))) {
-        if (!imageOnly) FinderHeader(a)
+    Column(Modifier.fillMaxSize().background(if (overlayOnly) Color.Transparent else Color(0xff0a0b0c))) {
+        if (!overlayOnly) FinderHeader(a)
         BoxWithConstraints(
             Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.Center,
@@ -394,38 +430,11 @@ private fun Finder(a: MainActivity, imageOnly: Boolean = false) {
             if (f != null) {
                 val aspect = f.w.toFloat() / f.h
                 val fitted =
-                    if (maxWidth / maxHeight > aspect) Modifier.fillMaxHeight().aspectRatio(aspect)
+                    if (overlayOnly) Modifier.fillMaxSize()
+                    else if (maxWidth / maxHeight > aspect) Modifier.fillMaxHeight().aspectRatio(aspect)
                     else Modifier.fillMaxWidth().aspectRatio(aspect)
                 Box(fitted) {
-                    val live = s.live?.let { a.latestLive ?: it }
-                    val look =
-                        Look(
-                            f,
-                            a.response,
-                            (live?.ev ?: f.cameraEv) - a.effectiveMiddleEv,
-                            a.film,
-                            a.preview,
-                            a.mode == "M",
-                            a.style,
-                            if (a.useLut && a.preview) a.activeAtlas?.takeIf { it.entry.file == a.variant?.file } else null,
-                            live,
-                        )
-                    AndroidView(
-                        factory = { ctx -> Preview(ctx).apply {
-                            a.previewView = java.lang.ref.WeakReference(this)
-                            onCubeUnavailable = { file ->
-                                if (a.variant?.file == file) {
-                                    a.failedLut = file
-                                    a.activeAtlas = null
-                                }
-                            }
-                        } },
-                        modifier = Modifier.fillMaxSize(),
-                        update = {
-                            it.onRendered = if (a.showFps) a::markRendered else null
-                            it.show(look, if (a.frozen || s.still) 1.0 else a.previewScale)
-                        },
-                    )
+                    if (!overlayOnly) FinderPreview(a)
                     Canvas(
                         Modifier.fillMaxSize().pointerInput(a.frozen, a.pendingGroundEv, a.reportEnabled) {
                             detectTapGestures(onDoubleTap = if (a.reportEnabled) { _ -> a.archiveFinder() } else null) {
@@ -547,7 +556,7 @@ private fun Finder(a: MainActivity, imageOnly: Boolean = false) {
                 Action("启用相机 / 重试", true) { a.requestCamera() }
             else Label("正在等待相机", 13, muted)
         }
-        if (!imageOnly) FinderFooter(a)
+        if (!overlayOnly) FinderFooter(a)
     }
 }
 

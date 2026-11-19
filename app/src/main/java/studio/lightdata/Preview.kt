@@ -27,6 +27,10 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
     @Volatile private var look: Look? = null
     @Volatile var renderedLive: LiveCapture? = null
         private set
+    @Volatile private var glassFrame: GlassFrame? = null
+    private var compositor: GlassCompositor? = null
+    private var surfaceW = 1
+    private var surfaceH = 1
     private var scale = 1.0
     private var bufferWidth = 0
     private var bufferHeight = 0
@@ -55,6 +59,15 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
         renderMode = RENDERMODE_WHEN_DIRTY
     }
 
+    fun setGlassFrame(left: Float, top: Float, right: Float, bottom: Float) {
+        if (right <= left || bottom <= top) return
+        val next = GlassFrame(left, top, right, bottom)
+        if (glassFrame == next) return
+        glassFrame = next
+        resizeBuffer()
+        requestRender()
+    }
+
     fun show(next: Look, resolution: Double) {
         look = next
         scale = resolution
@@ -79,9 +92,12 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
         val fw = current.live?.width ?: current.frame.w
         val fh = current.live?.height ?: current.frame.h
         if (width == 0 || height == 0) return
-        val factor = minOf(1.0, width.toDouble()/fw, height.toDouble()/fh) * scale
-        val w = max(1, (fw * factor).roundToInt())
-        val h = max(1, (fh * factor).roundToInt())
+        val glass = glassFrame
+        val gateWidth = glass?.width?.toDouble() ?: 1.0
+        val gateHeight = glass?.height?.toDouble() ?: 1.0
+        val factor = minOf(1.0, width*gateWidth/fw, height*gateHeight/fh) * scale
+        val w = (fw * factor / gateWidth).roundToInt().coerceIn(1, width)
+        val h = (fh * factor / gateHeight).roundToInt().coerceIn(1, height)
         if (w == bufferWidth && h == bufferHeight) return
         bufferWidth = w
         bufferHeight = h
@@ -210,6 +226,7 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
             ),
         )
         glLinkProgram(program)
+        compositor = null
         locations.clear()
         tableLook = null
         glGenTextures(textures.size, textures, 0)
@@ -235,12 +252,19 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
     }
 
     override fun onSurfaceChanged(g: GL10?, w: Int, h: Int) {
+        surfaceW = w
+        surfaceH = h
         glViewport(0, 0, w, h)
     }
 
     override fun onDrawFrame(g: GL10?) {
         val l = look ?: return
-        drawLook(l)
+        val frame = glassFrame
+        if (frame == null) drawLook(l)
+        else {
+            val glass = compositor ?: GlassCompositor().also { compositor = it }
+            glass.draw(frame, surfaceW, surfaceH, quad) { drawLook(l) }
+        }
         renderedLive = l.live
         val source = l.live ?: l.frame
         if (source !== reported) {
@@ -353,6 +377,10 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
                 post { onCubeUnavailable?.invoke(atlas.entry.file) }
             }
         }
+        // The full-screen compositor also uses units 0 and 1. Restore the curve
+        // binding even on frames whose exposure did not require a table upload.
+        glActiveTexture(GL_TEXTURE1)
+        glBindTexture(GL_TEXTURE_2D, textures[1])
         glUniform1i(uniform("cube"), 2)
         glUniform2f(uniform("zoneBounds"),
             l.film.positive(l.film.low).toFloat(), l.film.positive(l.film.high).toFloat())

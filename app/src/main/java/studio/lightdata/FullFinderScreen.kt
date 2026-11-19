@@ -1,14 +1,5 @@
 package studio.lightdata
 
-import android.graphics.Bitmap
-import android.graphics.BitmapShader
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.RectF
-import android.graphics.Shader
-import android.os.Handler
-import android.os.Looper
-import android.view.PixelCopy
 import android.widget.EditText
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
@@ -24,8 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -39,8 +28,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
 import kotlin.math.*
 
 internal class GlassPalette(light: Boolean) {
@@ -56,75 +43,30 @@ internal class GlassPalette(light: Boolean) {
 
 internal val LocalGlassPalette = staticCompositionLocalOf<GlassPalette?> { null }
 
-// Read a postage-stamp copy of the displayed GL surface. The backdrop and contrast decision
-// then see exactly the selected LUT, exposure and crop, without a second camera or GL renderer.
-private class GroundGlass(val thumbnail: Bitmap, val luminance: IntArray)
-
-@Composable
-private fun glassImage(a: MainActivity): GroundGlass? {
-    var image by remember { mutableStateOf<GroundGlass?>(null) }
-    LaunchedEffect(a) {
-        val handler = Handler(Looper.getMainLooper())
-        val size = 32
-        val copy = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val pixels = IntArray(size * size)
-        while (true) {
-            val view = a.previewView.get()
-            if (view != null && view.isAttachedToWindow && view.holder.surface.isValid) {
-                val status = suspendCancellableCoroutine { c ->
-                    try {
-                        PixelCopy.request(view, copy, { if (c.isActive) c.resume(it) }, handler)
-                    } catch (_: IllegalArgumentException) { c.resume(PixelCopy.ERROR_SOURCE_INVALID) }
-                }
-                if (status == PixelCopy.SUCCESS) {
-                    copy.getPixels(pixels, 0, size, 0, 0, size, size)
-                    val blurred = IntArray(pixels.size)
-                    for (y in 0 until size) for (x in 0 until size) {
-                        var r = 0; var g = 0; var b = 0
-                        for (dy in -1..1) for (dx in -1..1) {
-                            val p = pixels[(y + dy).coerceIn(0,size-1)*size + (x + dx).coerceIn(0,size-1)]
-                            r += p shr 16 and 255; g += p shr 8 and 255; b += p and 255
-                        }
-                        blurred[y*size+x] = android.graphics.Color.rgb(r/9, g/9, b/9)
-                    }
-                    image = GroundGlass(Bitmap.createBitmap(blurred,size,size,Bitmap.Config.ARGB_8888),
-                        IntArray(pixels.size) { luma(blurred[it]) })
-                }
-            }
-            delay(400)
-        }
-    }
-    return image
-}
-
-@Composable
-private fun GlassBackdrop(image: GroundGlass?, frame: Rect) {
-    if (image == null) return
-    val paint = remember(image, frame) {
-        val bitmap = image.thumbnail
-        val texture = BitmapShader(bitmap, Shader.TileMode.MIRROR, Shader.TileMode.MIRROR)
-        texture.setLocalMatrix(Matrix().apply { setRectToRect(RectF(0f,0f,bitmap.width.toFloat(),bitmap.height.toFloat()),
-            RectF(frame.left, frame.top, frame.right, frame.bottom), Matrix.ScaleToFit.FILL) })
-        Paint(Paint.FILTER_BITMAP_FLAG).apply { shader = texture }
-    }
-    Canvas(Modifier.fillMaxSize()) {
-        drawIntoCanvas { it.nativeCanvas.drawRect(0f, 0f, size.width, size.height, paint) }
-    }
-}
-
 private fun reflection(x: Float): Float {
     val phase = x - 2 * floor(x / 2)
     return if (phase <= 1) phase else 2 - phase
 }
 
-private fun brightness(image: GroundGlass?, background: Rect, panel: Rect): Int {
-    if (image == null || background.isEmpty) return 0
+// Sample the metering frame for text contrast. The displayed image stays on the GPU.
+private fun brightness(a: MainActivity, background: Rect, panel: Rect): Int {
+    val frame = a.sample?.frame ?: return 0
+    if (background.isEmpty) return 0
+    val response = a.response
+    val delta = frame.cameraEv - a.effectiveMiddleEv
     var sum = 0
-    val size = image.thumbnail.width
     for (y in 0..4) for (x in 0..4) {
         val u = reflection((panel.left + panel.width*(x+.5f)/5 - background.left)/background.width)
         val v = reflection((panel.top + panel.height*(y+.5f)/5 - background.top)/background.height)
-        sum += image.luminance[(v*size).toInt().coerceIn(0,size-1)*size + (u*size).toInt().coerceIn(0,size-1)]
+        val pixel = frame.sample(u.toDouble(), v.toDouble())
+        if (pixel ushr 24 == 0) continue
+        val gray = luma(pixel)
+        val ev = response[gray] + delta
+        sum += when {
+            a.preview -> (255 * linearToSrgb(a.film.positive(ev))).roundToInt()
+            a.mode == "M" -> (255 * linearToSrgb(.18 * 2.0.pow(ev))).roundToInt().coerceIn(0,255)
+            else -> gray
+        }
     }
     return sum/25
 }
@@ -158,7 +100,7 @@ private fun GlassButton(label:String, action:()->Unit) {
 
 @Composable
 internal fun FullFinderScreen(
-    a: MainActivity, landscape: Boolean, finder: @Composable ()->Unit, instruments: @Composable ()->Unit,
+    a: MainActivity, landscape: Boolean, finderOverlay: @Composable ()->Unit, instruments: @Composable ()->Unit,
     histogram: @Composable ()->Unit, meter: @Composable ()->Unit,
 ) {
     val controller = a.fullFinder
@@ -177,7 +119,6 @@ internal fun FullFinderScreen(
             if (initial?.isVisible(navigation) != false) bars.show(navigation)
         }
     }
-    val image = glassImage(a)
     var current by remember(landscape) { mutableStateOf(controller.current(landscape)) }
     var editing by remember(landscape) { mutableStateOf<GlassPart?>(null) }
     var controls by remember { mutableStateOf(false) }
@@ -234,11 +175,12 @@ internal fun FullFinderScreen(
                 else -> { editing=null; use(controller.load(landscape,names[i-8])) }
             } }
         }
-        GlassBackdrop(image,bounds[0])
-        Box(place(bounds[0])) { finder() }
-        Box(place(bounds[1])) { GlassPanel(brightness(image,bounds[0],bounds[1]),histogram) }
+        val gate = bounds[0]
+        FinderPreview(a, Rect(gate.left/w, gate.top/h, gate.right/w, gate.bottom/h))
+        Box(place(gate)) { finderOverlay() }
+        Box(place(bounds[1])) { GlassPanel(brightness(a,gate,bounds[1]),histogram) }
         Box(place(bounds[2])) {
-            GlassPanel(brightness(image,bounds[0],bounds[2])) {
+            GlassPanel(brightness(a,gate,bounds[2])) {
                 val foreground = LocalGlassPalette.current!!.text
                 if (landscape) Column {
                     if(distance) ParallaxDistanceWheel(a, Modifier.fillMaxWidth().height(44.dp),
