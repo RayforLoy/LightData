@@ -21,11 +21,11 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
     val formatAtTap = format
     val focalAtTap = focal
     val modeAtTap = mode
-    val compensation = if (mode == "M" || placedSpotId != null) 0.0 else compensationThirds / 3.0
+    val compensation = if (mode == "M" || placedSpotId != null) 0.0 else compensationEv
     val atlas = if (useLut && preview) activeAtlas?.takeIf { it.entry.file == variant?.file } else null
     val look = Look(frame,response,frame.cameraEv-middle,filmAtTap,preview,mode=="M",style,atlas)
     val points = spots.toList()
-    val chart = HistogramWindow.following(scene)
+    val chart = HistogramWindow.automatic(scene, middle, centerHistogramOnZone)
     val bins = chart.bins(measured.hist,response,frame.cameraEv,128)
     val maxDensity = ceil(filmAtTap.dots.maxOf { it.second }).coerceAtLeast(.001)
     val curve = DoubleArray(bins.size) {
@@ -50,7 +50,8 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
             val e = sensor.exposure
             add("手机采集参数" to "${timeLabel(e.t)} · f/${n(e.a)} · ISO ${isoLabel(e.iso)} · 后级增益 ${n(sensor.postRawBoost)}×")
         }
-        add("场景测光" to "${n(scene)} EV100")
+        if (faceMeterEnabled) add("人脸重点测光" to faceMeterStatus)
+        add((if (faceMeterEnabled && !scanActive && frame.faceHistogram != null) "人脸测光" else "场景测光") to "${n(scene)} EV100")
         held?.let { add("锁定读数" to "${n(it)} EV100") }
         add("胶片 / 感光度" to "${filmAtTap.name} · 标称 ISO ${isoLabel(filmIso)} · " +
             if (isoLocked) "跟随胶片" else "手动 ISO")

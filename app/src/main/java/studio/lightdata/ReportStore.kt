@@ -164,7 +164,7 @@ internal class ReportStore(private val context: Context) {
         paint.textSize=24f
         text(date,width-margin-paint.measureText(date),63f,24f)
         val exposure=report.exposure
-        text("${if (exposure.t < 0.4) timeLabel(exposure.t) else n(exposure.t)} s    f/${n(exposure.a)}    ISO ${isoLabel(exposure.iso)}    ${n(report.focalMm)} mm",margin,140f,36f)
+        text("${timeLabel(exposure.t).removeSuffix("″")} s    f/${n(exposure.a)}    ISO ${isoLabel(exposure.iso)}    ${n(report.focalMm)} mm",margin,140f,36f)
         val left=(width-photoW)/2
         paint.color=Color.WHITE
         canvas.drawBitmap(report.image,null,RectF(left,172f,left+photoW,172f+photoH),paint)

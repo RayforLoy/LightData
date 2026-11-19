@@ -2,6 +2,7 @@ package studio.lightdata
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -83,9 +84,7 @@ internal fun ParallaxSettings(a: MainActivity) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         ParallaxLabel("被摄物至焦平面", modifier = Modifier.weight(1f))
         ParallaxLabel(distanceLabel(config.distanceMm) + "  ›", amber, modifier = Modifier.clickable {
-            a.input("被摄物到胶片或传感器平面的距离（mm）",
-                config.distanceMm.takeIf(Double::isFinite) ?: max(1000.0, ceil(a.focal + abs(config.zMm) + 1)),
-                1.0..1e9) { apply(a.parallax.copy(distanceMm = it)) }
+            a.editSubjectDistance()
         }.padding(8.dp))
         ParallaxLabel("∞", amber, modifier = Modifier.clickable {
             apply(a.parallax.copy(distanceMm = Double.POSITIVE_INFINITY))
@@ -113,6 +112,7 @@ private fun AxisGuide(horizontal: Double, up: Double, title: String, modifier: M
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun ParallaxDistanceWheel(
     a: MainActivity, modifier: Modifier = Modifier, vertical: Boolean = false,
@@ -157,7 +157,7 @@ internal fun ParallaxDistanceWheel(
         @Composable fun cell(offset: Int, m: Modifier) {
             val idx = selected + offset
             val value = options.getOrNull(idx)
-            Box(m.then(if (value != null) Modifier.clickable { select(idx) } else Modifier),
+            Box(m.combinedClickable(onLongClickLabel = "输入物距", onLongClick = { a.editSubjectDistance() }, onClick = { if (value != null) select(idx) }),
                 contentAlignment = Alignment.Center) {
                 if (value != null) {
                     BasicText(if (vertical && value.isFinite()) distanceLabel(value).replace(" ", "\n") else distanceLabel(value),

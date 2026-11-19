@@ -20,6 +20,7 @@ class LiveCapture(val image: Rig.Packet, val ev: Double, val id: String, val tim
     private val left = (if (covered) ((uprightWidth-width)/2).toDouble()/uprightWidth else (1-sx)/2) + offsetX/uprightWidth
     private val top = (if (covered) ((uprightHeight-height)/2).toDouble()/uprightHeight else (1-sy)/2) + offsetY/uprightHeight
     val gate = floatArrayOf(left.toFloat(),top.toFloat(),sx.toFloat(),sy.toFloat())
+    val faces = image.faces?.mapNotNull { it.inGate(turn,gate) }?.sortedByDescending { it.width * it.height }
     private fun pixel(x: Int, y: Int): Int {
         if (x !in 0 until uprightWidth || y !in 0 until uprightHeight) return 0
         return when(turn) {
@@ -58,6 +59,6 @@ class LiveCapture(val image: Rig.Packet, val ev: Double, val id: String, val tim
             val y = yAt((row+.5)/height)
             for (col in xs.indices) colors[row*width+col] = pixel(xs[col],y)
         }
-        return Frame(width,height,colors,ev,id,timestamp,image.encoding,image.sensorReading)
+        return Frame(width,height,colors,ev,id,timestamp,image.encoding,image.sensorReading,faces)
     }
 }

@@ -16,7 +16,7 @@ import androidx.compose.runtime.setValue
 import java.util.concurrent.TimeUnit
 
 internal class ReportSession(private val activity: MainActivity) {
-    var enabled by mutableStateOf(activity.prefs.getBoolean("reportEnabled", false))
+    var enabled by mutableStateOf(activity.prefs.getBoolean("reportEnabled", true))
         private set
     var locationEnabled by mutableStateOf(activity.prefs.getBoolean("reportLocation", false))
         private set
@@ -110,10 +110,11 @@ internal class ReportSession(private val activity: MainActivity) {
     fun capture() {
         if (!enabled || busy) return
         if (!storageAllowed()) { requestStorage(); return }
-        if (activity.sample == null || activity.reading == null) {
+        if (activity.sample == null) {
             activity.notifyUser("等待读取画面和测光值")
             return
         }
+        activity.soundFeedback.play(FeedbackCue.ARCHIVE)
         val location = fix?.takeIf { locationEnabled && locationAllowed() && ageMs(it) in 0L..120_000L }?.let(::Location)
         busy = true
         activity.captureMeterReport(location) { result ->

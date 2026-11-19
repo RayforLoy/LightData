@@ -135,7 +135,8 @@ fun Instrument(a: MainActivity) {
                 Box(Modifier.weight(1f)) { content() }
             }
         }
-        if (a.toolsPage.isNotEmpty()) MoreToolsDialog(a)
+        if (a.toolsPage == "more") FloatingTools(a, landscape)
+        else if (a.toolsPage.isNotEmpty()) MoreToolsDialog(a)
         if (a.settings)
             Settings(
                 a,
@@ -204,7 +205,12 @@ private fun Split(a: MainActivity, key: String, vertical: Boolean, span: Float, 
 private fun Toolbar(a: MainActivity, land: Boolean) {
     @Composable
     fun brand() {
-        Label("LightData", if (land) 10 else 20, paper, bold = true)
+        if (land) BasicText("LightData", Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+            style = TextStyle(color = paper, fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+            maxLines = 1, softWrap = false,
+            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(4.sp, 16.sp, .25.sp))
+        else Label("LightData", 20, paper, bold = true)
     }
     @Composable
     fun buttons() {
@@ -535,6 +541,7 @@ private fun Finder(a: MainActivity, overlayOnly: Boolean = false) {
                         }
                     }
                     FramingOverlay(a,f.w,f.h)
+                    FaceMeterOverlay(a)
                     if (a.showLevel && !a.frozen) FinderLevel(a)
                     s.scan?.takeIf { a.scanActive && !a.frozen }?.let { guide ->
                         val pitch = guide.startPitchRadians
@@ -561,6 +568,11 @@ private fun Finder(a: MainActivity, overlayOnly: Boolean = false) {
 }
 
 @Composable
+private fun HistogramCountLabel(bars: HistogramBars, gain: Double, logCounts: Boolean, color: Color) {
+    Label((if (logCounts) "像素 log " else "像素 ") + ceil(bars.peak() / gain).toInt(), 9, color)
+}
+
+@Composable
 private fun Histogram(a: MainActivity) {
     val palette = LocalGlassPalette.current
     val paper = palette?.text ?: paper
@@ -574,13 +586,14 @@ private fun Histogram(a: MainActivity) {
     val middle = a.effectiveMiddleEv
     val response = a.response
     val reading = a.reading
-    var window by remember { mutableStateOf<HistogramWindow?>(null) }
-    val chart = window ?: HistogramWindow.following(reading)
+    var window by remember(a.centerHistogramOnZone) { mutableStateOf<HistogramWindow?>(null) }
+    val chart = window ?: HistogramWindow.automatic(reading, middle, a.centerHistogramOnZone)
     val currentChart by rememberUpdatedState(chart)
-    val bins = remember(sample?.hist, response, chart.left, chart.span) {
+    val bins = remember(sample?.hist, sample?.frame?.cameraEv, response, chart.left, chart.span) {
         sample?.let { chart.bins(it.hist, response, it.frame.cameraEv, 128) } ?: IntArray(128)
     }
-    val peak = bins.max().coerceAtLeast(1)
+    val bars = displayHistogram(bins, sample?.hist, sample?.frame?.cameraEv ?: 0.0, chart, response,
+        a.smoothHistogram && !a.frozen, sample?.frame?.id, a.scanActive)
     val densityMax = ceil(film.dots.maxOf { it.second })
     Column(
         Modifier.fillMaxSize().background(if (palette == null) ink else Color.Transparent).padding(5.dp)
@@ -595,7 +608,7 @@ private fun Histogram(a: MainActivity) {
         if (remember(reading, sample?.hist) { sample != null && dimMeterWarning(reading, sample.hist) })
             Label("环境极暗，测光可能不准确", 11, amber)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Label((if (a.logCounts) "像素 log " else "像素 ") + ceil(peak / chart.gain).toInt(), 9, muted)
+            HistogramCountLabel(bars, chart.gain, a.logCounts, muted)
             Label("密度 D " + n(round(densityMax / chart.gain * 10) / 10), 9, amber)
         }
         Canvas(
@@ -606,7 +619,7 @@ private fun Histogram(a: MainActivity) {
                         java.util.Locale.US, chart.left, chart.right, chart.gain
                     )
                 }
-                .pointerInput(Unit) {
+                .pointerInput(a.centerHistogramOnZone) {
                     var lastTapUp: Long? = null
                     var lastTapPosition = Offset.Zero
                     awaitEachGesture {
@@ -672,13 +685,14 @@ private fun Histogram(a: MainActivity) {
                     val xx = x((tick * grid).toDouble())
                     drawLine(line, Offset(xx, 0f), Offset(xx, h))
                 }
-                val topCount = peak / chart.gain
+                val topCount = bars.peak() / chart.gain
                 val logTop = ln1p(topCount)
                 if (!a.logCounts) {
                     for (i in 1..3) drawLine(line, Offset(0f, h * i / 4), Offset(w, h * i / 4))
                 }
                 for (i in bins.indices) {
-                    val fraction = if (a.logCounts) ln1p(bins[i].toDouble()) / logTop else bins[i] / topCount
+                    val count = bars.value(i).toDouble()
+                    val fraction = if (a.logCounts) ln1p(count) / logTop else count / topCount
                     val bh = (h * fraction).toFloat()
                     drawRect(muted, Offset(w * i / bins.size, h - bh), Size(w / bins.size + 1, bh))
                 }
@@ -791,9 +805,11 @@ private fun Meter(a: MainActivity) {
             Label(if (a.sample == null) "— EV" else "曝光偏差  " + signed((a.held ?: a.reading ?: a.effectiveMiddleEv) - a.effectiveMiddleEv) + " EV",
                 12, amber, Modifier.padding(vertical = 4.dp), monoType = true)
         } else {
-            val requested = a.compensationThirds / 3.0
+            val requested = a.compensationEv
             val residual = (a.held ?: a.reading)?.let { it - a.effectiveMiddleEv - requested }
-            ExposureCompensation(a.compensationThirds, residual, !a.frozen, a::adjustCompensation)
+            ExposureCompensation(requested, residual, !a.frozen, a::adjustCompensation) {
+                a.input("曝光补偿（EV）", a.compensationEv, -5.0..5.0, a::adjustCompensation)
+            }
         }
         ExposureTable(a, e, Modifier.weight(2.25f))
         val iso = (speeds + a.manual.iso).distinct().sorted()
@@ -820,50 +836,51 @@ private fun MeterButton(text: String, selected: Boolean, enabled: Boolean, modif
 }
 
 @Composable
-private fun ExposureCompensation(thirds: Int, residual: Double?, enabled: Boolean, update: (Int) -> Unit) {
+private fun ExposureCompensation(ev: Double, residual: Double?, enabled: Boolean, update: (Double) -> Unit, edit: () -> Unit) {
     val palette = LocalGlassPalette.current
     val muted = palette?.secondary ?: muted
     val line = palette?.grid ?: line
     val amber = palette?.accent ?: amber
     val change by rememberUpdatedState(update)
+    val onEdit by rememberUpdatedState(edit)
+    fun stopAt(x: Float, width: Float, inset: Float): Double {
+        val fraction = ((x - inset) / (width - 2 * inset).coerceAtLeast(1f)).coerceIn(0f, 1f)
+        return ((fraction * 30).roundToInt() - 15) / 3.0
+    }
     Column(Modifier.fillMaxWidth().semantics {
         contentDescription = "曝光补偿"
-        progressBarRangeInfo = ProgressBarRangeInfo(thirds / 3f, -5f..5f, 29)
-        setProgress { value -> if (enabled) change((value * 3).roundToInt()); enabled }
+        onLongClick("输入曝光补偿") { if (enabled) onEdit(); enabled }
+        progressBarRangeInfo = ProgressBarRangeInfo(ev.toFloat(), -5f..5f, 29)
+        setProgress { value -> if (enabled) change((value * 3).roundToInt() / 3.0); enabled }
     }) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth().pointerInput(enabled) {
+            if (enabled) detectTapGestures(onLongPress = { onEdit() })
+        }, horizontalArrangement = Arrangement.SpaceBetween) {
             Label(if (residual != null && abs(residual) > .25) "超限 " + signed(residual) + " EV" else "曝光补偿",
                 10, if (residual != null && abs(residual) > .25) red else muted)
-            Label(signed(thirds / 3.0) + " EV", 11, amber, monoType = true)
+            Label((if (ev >= 0.0) "+" else "") + n(ev) + " EV", 11, amber, monoType = true)
         }
         Canvas(Modifier.fillMaxWidth().height(25.dp).pointerInput(enabled) {
-            if (enabled) awaitEachGesture {
-                val down = awaitFirstDown()
-                fun selectAt(x: Float) {
-                    val inset = 6.dp.toPx()
-                    val fraction = ((x-inset)/(size.width-2*inset).coerceAtLeast(1f)).coerceIn(0f,1f)
-                    change((fraction*30).roundToInt()-15)
-                }
-                selectAt(down.position.x)
-                down.consume()
-                do {
-                    val pointer = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                    if (pointer.pressed) selectAt(pointer.position.x)
-                    pointer.consume()
-                } while (pointer.pressed)
+            if (enabled) detectTapGestures(onLongPress = { onEdit() }, onTap = {
+                change(stopAt(it.x, size.width.toFloat(), 6.dp.toPx()))
+            })
+        }.pointerInput(enabled) {
+            if (enabled) detectHorizontalDragGestures { pointer, _ ->
+                pointer.consume()
+                change(stopAt(pointer.position.x, size.width.toFloat(), 6.dp.toPx()))
             }
         }) {
             val inset = 6.dp.toPx()
             val length = size.width - 2*inset
-            fun x(i:Int) = inset + (i+15)/30f*length
+            fun x(thirds: Number) = inset + (thirds.toFloat()+15)/30f*length
             val mid=size.height/2
             drawLine(line, Offset(inset, mid), Offset(size.width-inset, mid), 1.dp.toPx())
-            drawLine(amber, Offset(x(0),mid), Offset(x(thirds),mid), 1.5.dp.toPx())
+            drawLine(amber, Offset(x(0),mid), Offset(x(ev * 3),mid), 1.5.dp.toPx())
             for (i in -15..15) {
                 val half = (if (i==0) 5.dp else if (i%3==0) 4.dp else 2.dp).toPx()
                 drawLine(if (i==0) paper else muted, Offset(x(i),mid-half), Offset(x(i),mid+half))
             }
-            drawCircle(amber, 4.dp.toPx(), Offset(x(thirds),mid))
+            drawCircle(amber, 4.dp.toPx(), Offset(x(ev * 3),mid))
         }
     }
 }
@@ -916,53 +933,16 @@ private fun ExposureTable(a: MainActivity, e: Exposure, m: Modifier) {
                         if (steps != 0) {
                             remainder -= steps * pitch
                             val current = a.exposure
-                            when (a.mode) {
+                            if (a.mode == "A" || (a.mode == "M" && apertureRow))
+                                a.setValues(a.manual.copy(a = stepFromValue(apertures, current.a, steps)))
+                            else a.setValues(a.manual.copy(t = stepFromValue(shutters, current.t, steps)))
 
-                                "S" ->
-                                    a.setValues(
-                                        a.manual.copy(
-                                            t =
-                                                shutters[
-                                                    (shutters.indexOf(current.t) + steps).coerceIn(
-                                                        shutters.indices
-                                                    )]
-                                        )
-                                    )
-                                "A" ->
-                                    a.setValues(
-                                        a.manual.copy(
-                                            a =
-                                                apertures[
-                                                    (apertures.indexOf(current.a) + steps).coerceIn(
-                                                        apertures.indices
-                                                    )]
-                                        )
-                                    )
-                                else ->
-                                    if (apertureRow)
-                                        a.setValues(
-                                            a.manual.copy(
-                                                a =
-                                                    apertures[
-                                                        (apertures.indexOf(current.a) + steps)
-                                                            .coerceIn(apertures.indices)]
-                                            )
-                                        )
-                                    else
-                                        a.setValues(
-                                            a.manual.copy(
-                                                t =
-                                                    shutters[
-                                                        (shutters.indexOf(current.t) + steps)
-                                                            .coerceIn(shutters.indices)]
-                                            )
-                                        )
-                            }
                         }
                     }
                 }
             ) {
                 for ((idx, pair) in shown.withIndex()) {
+                    val currentPair by rememberUpdatedState(pair)
                     val active = pair == e
                     val color = if (active) paper else muted
                     Column(
@@ -970,8 +950,18 @@ private fun ExposureTable(a: MainActivity, e: Exposure, m: Modifier) {
                             .fillMaxHeight()
                             .padding(horizontal = 1.dp)
                             .background(if (active) palette?.button ?: Color(0xff342c22) else Color.Transparent)
-                            .clickable(enabled = !a.frozen) { a.selectPair(pair) }
+                            .pointerInput(a.frozen) {
+                                if (!a.frozen) detectTapGestures(onTap = { a.selectPair(currentPair) },
+                                    onLongPress = { a.editExposureValue(it.y < this.size.height * .5f) })
+                            }
                             .semantics {
+                                if (!a.frozen) {
+                                    onClick("选择曝光组合") { a.selectPair(pair); true }
+                                    customActions = listOf(
+                                        CustomAccessibilityAction("输入快门速度") { a.editExposureValue(true); true },
+                                        CustomAccessibilityAction("输入光圈") { a.editExposureValue(false); true },
+                                    )
+                                }
                                 contentDescription =
                                     "快门 " +
                                         timeLabel(pair.t) +
@@ -1158,6 +1148,8 @@ private fun FinderSwitch(label: String, checked: Boolean, change: (Boolean) -> U
 
 @Composable
 private fun Settings(a: MainActivity, m: Modifier) {
+    var soundSettings by remember { mutableStateOf(false) }
+    BackHandler(soundSettings) { soundSettings = false }
     Box(
         Modifier.fillMaxSize().background(Color.Black.copy(alpha = .7f)).clickable {
             a.settings = false
@@ -1171,9 +1163,15 @@ private fun Settings(a: MainActivity, m: Modifier) {
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Label("设置", 22, paper, Modifier.weight(1f), true)
+            if (soundSettings) Action("‹ 返回") { soundSettings = false }
+            Label(if (soundSettings) "声音" else "设置", 22, paper, Modifier.weight(1f), true)
             Action("完成") { a.settings = false }
         }
+        if (soundSettings) {
+            SoundSettingsPanel(a)
+            return@Column
+        }
+        Setting("声音", "音效设置") { soundSettings = true }
         fun open(url: String) {
             try {
                 a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -1200,6 +1198,16 @@ private fun Settings(a: MainActivity, m: Modifier) {
                     .padding(horizontal = 10.dp, vertical = 7.dp)) {
                     Label(axis.label, 12, if (selected) ink else paper)
                 }
+            }
+        }
+        FinderSwitch("直方图平滑刷新", a.smoothHistogram) { enabled ->
+            a.smoothHistogram = enabled
+            a.prefs.edit().putBoolean("smoothHistogram", enabled).apply()
+        }
+        Setting("直方图横轴中心", if (a.centerHistogramOnZone) "跟随 Zone V" else "跟随测光读数") {
+            a.choose("直方图横轴中心", listOf("跟随 Zone V", "跟随测光读数")) { index ->
+                a.centerHistogramOnZone = index == 0
+                a.prefs.edit().putBoolean("centerHistogramOnZone", a.centerHistogramOnZone).apply()
             }
         }
         Setting("组件比例", "拖动分界线") {

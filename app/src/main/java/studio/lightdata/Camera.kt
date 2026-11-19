@@ -22,6 +22,8 @@ data class Lens(
     val view: Field,
     val angle: Int,
     val compactSize: Size = size,
+    val globalFaceMode: Boolean = false,
+    val physicalFaceMode: Boolean = false,
 ) {
     val label
         get() = "镜头 " + id + " · " + (2 * Math.toDegrees(atan(view.x))).roundToInt() + "°"
@@ -80,8 +82,14 @@ fun cameras(ctx: Context): List<Lens> {
                 c[CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS]?.firstOrNull()
                     ?: continue
             val view = cameraField(c, size, f.toDouble(), null) ?: continue
+            fun supportsSimple(info: CameraCharacteristics) =
+                info[CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES]?.contains(
+                    CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE) == true
+            val sensorFaces = supportsSimple(c)
             val lens =
-                Lens(owner, id, c, size, view, c[CameraCharacteristics.SENSOR_ORIENTATION] ?: 90, compact)
+                Lens(owner, id, c, size, view, c[CameraCharacteristics.SENSOR_ORIENTATION] ?: 90, compact,
+                    sensorFaces && supportsSimple(logical),
+                    sensorFaces && id != owner && CaptureRequest.STATISTICS_FACE_DETECT_MODE in logical.availablePhysicalCameraRequestKeys.orEmpty())
             if (owner == id || id !in result) result[id] = lens
         }
     }
@@ -151,6 +159,18 @@ class Rig(
         }
     }
 
+    private var detectFaces = false
+    private var faceRequestRejected = false
+    fun setFaceDetection(enabled: Boolean) {
+        h.post {
+            if (detectFaces != enabled) {
+                detectFaces = enabled
+                faceRequestRejected = false
+                if (scan == null && !panoramaLock) request()
+            }
+        }
+    }
+
     private var processingPreview = false
 
     private class Scan(val method: String, val step: Double, val times: List<Long>, val iso: Int) {
@@ -165,6 +185,7 @@ class Rig(
     class Packet(val w: Int, val h: Int, val planes: List<Plane>, val encoding: YuvEncoding) {
         var scanMetadata: String? = null
         var panoramaLowLight = false
+        var faces: List<FaceBox>? = null
         var sensorReading: SensorReading? = null
         var exposureMs = 0.0
         var poseTimestampNs = 0L
@@ -202,7 +223,7 @@ class Rig(
     private var encoding = YuvEncoding.default
 
     private val images = linkedMapOf<Long, Packet>()
-    private val results = linkedMapOf<Long, Pair<CaptureResult, Int>>()
+    private val results = linkedMapOf<Long, Triple<CaptureResult, Int, Boolean>>()
     private val rawGrid = linkedMapOf<Long, DoubleArray>()
 
     private fun clear() {
@@ -246,6 +267,7 @@ class Rig(
         h.post {
             release()
             lens = target
+            faceRequestRejected = false
             val gen = generation
             try {
                 ctx.getSystemService(CameraManager::class.java)
@@ -495,6 +517,8 @@ class Rig(
         val b = scan
         val gen = generation
         val manual = if (b == null && panoramaLock) panoramaExposure else null
+        val faces = detectFaces && !faceRequestRejected && b == null && !panoramaLock &&
+            (l.globalFaceMode || l.physicalFaceMode)
         val requestId = ++previewRequest
         if (b == null) {
             images.clear()
@@ -508,13 +532,18 @@ class Rig(
         }
         try {
             val req =
-                if (manual != null && l.owner != l.id)
+                if ((manual != null && l.owner != l.id) || (faces && l.physicalFaceMode))
                     d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW,setOf(l.id))
                 else d.createCaptureRequest(
                     if (b == null) CameraDevice.TEMPLATE_PREVIEW
                     else CameraDevice.TEMPLATE_STILL_CAPTURE
                 )
             req.addTarget(yuv!!.surface)
+            if (faces) {
+                val key = CaptureRequest.STATISTICS_FACE_DETECT_MODE
+                if (l.globalFaceMode) req.set(key,CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE)
+                if (l.physicalFaceMode) req.setPhysicalCameraKey(key,CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE,l.id)
+            }
             req.set(
                 CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
                 CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF,
@@ -571,7 +600,9 @@ class Rig(
                             }
                         }
                         val ts = physical[CaptureResult.SENSOR_TIMESTAMP] ?: return
-                        results[ts] = physical to (if (b == null) -1 else b.index)
+                        // Faces from a logical camera may use a different coordinate system.
+                        val matchingFaceLens = l.id == l.owner || physical !== total
+                        results[ts] = Triple(physical, b?.index ?: -1, faces && matchingFaceLens)
                         match(ts)
                         trim()
                     }
@@ -581,7 +612,10 @@ class Rig(
                         r: CaptureRequest,
                         f: CaptureFailure,
                     ) {
-                        if (manual != null) fallBackToAe()
+                        if (faces && gen == generation && requestId == previewRequest) {
+                            faceRequestRejected = true
+                            request()
+                        } else if (manual != null) fallBackToAe()
                         else if (gen == generation && b != null) abort("包围曝光失败，请重试")
                     }
                 }
@@ -601,7 +635,10 @@ class Rig(
                 )
             }
         } catch (e: Exception) {
-            if (manual != null) fallBackToAe()
+            if (faces) {
+                faceRequestRejected = true
+                request()
+            } else if (manual != null) fallBackToAe()
             else if (b != null) abort("曝光请求失败：" + e.localizedMessage)
             else status("预览请求失败：" + e.localizedMessage)
         }
@@ -614,7 +651,7 @@ class Rig(
     }
 
     private fun match(ts: Long) {
-        val (meta, index) = results[ts] ?: return
+        val (meta, index, faceResult) = results[ts] ?: return
         val image = images[ts] ?: return
         val b = scan
         if (b != null && raw != null && rawGrid[ts] == null) return
@@ -711,6 +748,16 @@ class Rig(
                 .toString()
         }
         image.sensorReading = SensorReading(Exposure(time / 1e9, a, iso.toDouble()), boost)
+        if (faceResult && meta[CaptureResult.STATISTICS_FACE_DETECT_MODE] != CaptureResult.STATISTICS_FACE_DETECT_MODE_OFF) {
+            val active = if (meta[CaptureResult.DISTORTION_CORRECTION_MODE] == CaptureResult.DISTORTION_CORRECTION_MODE_OFF)
+                l.c[CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE] else null
+            val crop = meta[CaptureResult.SCALER_CROP_REGION] ?: active ?: l.c[CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE]
+            if (crop != null && !crop.isEmpty) {
+                fun toBox(rect: Rect) = FaceBox(rect.left.toDouble(),rect.top.toDouble(),rect.right.toDouble(),rect.bottom.toDouble())
+                val region = toBox(crop)
+                image.faces = meta[CaptureResult.STATISTICS_FACES]?.map { toBox(it.bounds).inStream(region,image.w.toDouble()/image.h) }
+            }
+        }
         image.exposureMs = time/1e6
         val ev = Exposure(time / 1e9, a, iso * boost).ev
         val sensorTime = if (synced) ts else 0L

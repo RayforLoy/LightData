@@ -15,14 +15,13 @@ internal fun zoneMiddleEv(spotEv: Double, zone: Int) = spotEv - (zone - 5)
 
 /** Dialed camera exposure, before film-specific reciprocity correction. */
 internal fun shootingExposure(mode: String, manual: Exposure, middleEv: Double, loss: Double,
-                              compensationThirds: Int, placing: Boolean = false): Exposure {
+                              compensationEv: Double, placing: Boolean = false): Exposure {
     // Explicit placement chooses the shutter in M, retaining the selected aperture.
     val solveMode = if (placing && mode == "M") "A" else mode
-    val compensation = if (placing) 0 else compensationThirds
-    val target = middleEv - loss
-    val dialed = solve(solveMode, manual, target, compensation)
+    val target = middleEv - loss - if (placing) 0.0 else compensationEv
+    val dialed = solve(solveMode, manual, target)
     if (solveMode == "A" && (loss > 0 || placing)) {
-        val t = manual.a * manual.a * 100 / manual.iso / 2.0.pow(target - compensation / 3.0)
+        val t = manual.a * manual.a * 100 / manual.iso / 2.0.pow(target)
         if (t.isFinite() && t > 30 && abs(log2(t / dialed.t)) > .18) return manual.copy(t = t)
     }
     return dialed

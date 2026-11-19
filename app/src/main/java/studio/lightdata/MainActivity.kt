@@ -46,64 +46,26 @@ class MainActivity : ComponentActivity() {
     internal var overlayOpacity by mutableFloatStateOf(.4f)
     var toolsPage by mutableStateOf("")
     var soundEnabled by mutableStateOf(true)
-    private var feedbackPlayer: android.media.MediaPlayer? = null
-
+    internal lateinit var soundFeedback: SoundFeedback
+        private set
+    private var importCue = FeedbackCue.METER
+    private val soundPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) soundFeedback.import(importCue, uri)
+    }
+    internal fun selectSound(cue: FeedbackCue) {
+        importCue = cue
+        soundPicker.launch(arrayOf("audio/*"))
+    }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("soundImportCue", importCue.name)
+        super.onSaveInstanceState(outState)
+    }
     fun toggleMeterSound() {
         soundEnabled = !soundEnabled
         prefs.edit().putBoolean("meterSound", soundEnabled).apply()
-        if (soundEnabled) playMeterSound() else releaseMeterSound()
+        if (soundEnabled) playMeterSound() else soundFeedback.stop()
     }
-
-    private fun releaseMeterSound() {
-        feedbackPlayer?.release()
-        feedbackPlayer = null
-    }
-
-    private var customSoundUri: android.net.Uri? = null
-    private val soundPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@registerForActivityResult
-        val trial = runCatching { android.media.MediaPlayer.create(this,uri) }.getOrNull()
-        if (trial == null) { notifyUser("无法读取所选音频"); return@registerForActivityResult }
-        val duration = trial.duration
-        trial.release()
-        if (duration !in 1..5000) { notifyUser("请选择 5 秒以内的确认音"); return@registerForActivityResult }
-        runCatching {
-            contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            val previous = customSoundUri
-            customSoundUri = uri
-            prefs.edit().putString("customSoundUri",uri.toString()).apply()
-            if (previous != null && previous != uri) releaseSoundUri(previous)
-            playMeterSound()
-        }.onFailure { notifyUser("无法保留音频读取权限") }
-    }
-
-    private fun releaseSoundUri(uri: android.net.Uri) {
-        runCatching { contentResolver.releasePersistableUriPermission(uri,android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-    }
-    fun selectMeterSound() = soundPicker.launch(arrayOf("audio/*"))
-    fun resetMeterSound() {
-        customSoundUri?.let(::releaseSoundUri)
-        customSoundUri = null
-        prefs.edit().remove("customSoundUri").apply()
-        playMeterSound()
-    }
-
-    fun playMeterSound() {
-        if (!soundEnabled) return
-        val manager = getSystemService(android.media.AudioManager::class.java)
-        val usb = manager.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).any {
-            it.type in setOf(android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
-                android.media.AudioDeviceInfo.TYPE_USB_HEADSET, android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY)
-        }
-        // An audio pulse may fire the attached sync adapter.
-        if (usb) return
-        releaseMeterSound()
-        val player = customSoundUri?.let { uri -> runCatching { android.media.MediaPlayer.create(this,uri) }.getOrNull() }
-            ?: android.media.MediaPlayer.create(this, R.raw.sony_focus) ?: return
-        feedbackPlayer = player
-        player.setOnCompletionListener { if (feedbackPlayer === it) releaseMeterSound() }
-        player.start()
-    }
+    fun playMeterSound() = soundFeedback.play(FeedbackCue.METER)
 
     internal val fullFinder by lazy { FullFinderSettings(prefs) }
     val prefs by lazy { getSharedPreferences("meter", MODE_PRIVATE) }
@@ -139,7 +101,8 @@ class MainActivity : ComponentActivity() {
     var isoLocked by mutableStateOf(true)
         private set
     var style by mutableIntStateOf(0)
-    var compensationThirds by mutableIntStateOf(0)
+    var centerHistogramOnZone by mutableStateOf(true)
+    var compensationEv by mutableDoubleStateOf(0.0)
         private set
     var preview by mutableStateOf(false)
     var useLut by mutableStateOf(false)
@@ -261,6 +224,7 @@ class MainActivity : ComponentActivity() {
     var frozen by mutableStateOf(false)
     var single by mutableStateOf(false)
     var held by mutableStateOf<Double?>(null)
+    var smoothHistogram by mutableStateOf(true)
     var logCounts by mutableStateOf(true)
     var settings by mutableStateOf(false)
     var resizing by mutableStateOf(false)
@@ -292,15 +256,36 @@ class MainActivity : ComponentActivity() {
     val response
         get() = cal?.responseFor(sample?.frame?.encoding ?: YuvEncoding.default) ?: defaultResponse
 
+    var faceMeterEnabled by mutableStateOf(false)
+        private set
+    private var latestFaces by mutableStateOf<List<FaceBox>?>(null)
+    val facesForOverlay get() = if (frozen) sample?.frame?.faces else latestFaces
+    val faceMeterStatus get() = when {
+        !faceMeterEnabled -> "关闭"
+        scanActive -> "拼接中 · 全画面测光"
+        current == null -> "等待相机"
+        current?.let { it.globalFaceMode || it.physicalFaceMode } != true -> "镜头不支持 · 全画面测光"
+        sample?.frame?.faces == null -> "未收到镜头人脸数据 · 全画面测光"
+        sample?.frame?.faceHistogram == null -> "未检测到人脸 · 全画面测光"
+        else -> "人脸重点测光"
+    }
+    fun toggleFaceMeter() {
+        faceMeterEnabled = !faceMeterEnabled
+        latestFaces = null
+        prefs.edit().putBoolean("faceMeter",faceMeterEnabled).apply()
+        rig.setFaceDetection(faceMeterEnabled)
+    }
+
     private var meteredHist: IntArray? = null
     private var meteredLut: DoubleArray? = null
     private var meteredOffset: Double? = null
     val reading: Double? get() {
         val s = sample ?: return null
         val lut = response
-        if (meteredHist !== s.hist || meteredLut !== lut) {
-            meteredOffset = if (s.hist.any { it > 0 }) meter(s.hist,lut) else null
-            meteredHist=s.hist
+        val histogram = if (faceMeterEnabled && !scanActive) s.frame.faceHistogram ?: s.hist else s.hist
+        if (meteredHist !== histogram || meteredLut !== lut) {
+            meteredOffset = if (histogram.any { it > 0 }) meter(histogram,lut) else null
+            meteredHist=histogram
             meteredLut=lut
         }
         return meteredOffset?.plus(s.frame.cameraEv)
@@ -373,7 +358,7 @@ class MainActivity : ComponentActivity() {
     private fun meteredExposure(): Exposure {
         val anchor = if (frozen) spots.find { it.id == placedSpotId } else null
         val middle = anchor?.let { zoneMiddleEv(it.ev, placedZone) } ?: held ?: reading ?: manual.ev
-        return shootingExposure(mode, manual, middle, opticalLoss, compensationThirds, anchor != null)
+        return shootingExposure(mode, manual, middle, opticalLoss, compensationEv, anchor != null)
     }
 
     fun placeSpot(point: Spot, zone: Int) {
@@ -426,7 +411,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(b)
         reportSession = ReportSession(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        customSoundUri = prefs.getString("customSoundUri",null)?.let(android.net.Uri::parse)
+        importCue = FeedbackCue.entries.find { it.name == b?.getString("soundImportCue") } ?: FeedbackCue.METER
+        soundFeedback = SoundFeedback(this)
         soundEnabled = prefs.getBoolean("meterSound",true)
         pose = Pose(this)
         rig =
@@ -449,6 +435,8 @@ class MainActivity : ComponentActivity() {
                 },
                 { !frozen },
             )
+        faceMeterEnabled = prefs.getBoolean("faceMeter", false)
+        rig.setFaceDetection(faceMeterEnabled)
         measuredOpticalLoss = prefs.getString("measuredOpticalLoss", null)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }
         useMeasuredLoss = measuredOpticalLoss != null && prefs.getBoolean("useMeasuredLoss", false)
         filterStops = saved("filterStops", 0.0).coerceIn(0.0, 24.0)
@@ -466,7 +454,8 @@ class MainActivity : ComponentActivity() {
                 ?: Format(name ?: "自定义", saved("width", 36.0), saved("height", 24.0))
         mode = storedMode(prefs.getString("mode", null))
         put("mode", mode)
-        compensationThirds = prefs.getInt("compensationThirds", 0).coerceIn(-15, 15)
+        centerHistogramOnZone = prefs.getBoolean("centerHistogramOnZone", true)
+        compensationEv = saved("compensationEv", prefs.getInt("compensationThirds", 0) / 3.0).coerceIn(-5.0, 5.0)
         manual = Exposure(saved("t", 1.0 / 125), saved("a", 8.0), saved("iso", 400.0))
         style = saved("style", 0.0).toInt()
         useLut = prefs.getBoolean("useLut", false)
@@ -475,6 +464,7 @@ class MainActivity : ComponentActivity() {
         showFps = prefs.getBoolean("showFps", false)
         showLevel = prefs.getBoolean("showLevel", true)
         restoreFilm()
+        smoothHistogram = prefs.getBoolean("smoothHistogram", true)
         logCounts = prefs.getBoolean("logCounts", true)
         for (prefix in listOf("p", "l", "squarep", "squarel")) {
             for (i in 1..2) {
@@ -545,7 +535,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         cancelScan()
         rig.destroy()
-        releaseMeterSound()
+        soundFeedback.close()
         meterWorker.shutdownNow()
         super.onDestroy()
     }
@@ -693,6 +683,7 @@ class MainActivity : ComponentActivity() {
                     "Frame from " + l.label + " via " + l.owner + " " + out.w + "x" + out.h,
                 )
             }
+            latestFaces = if (faceMeterEnabled) result.live?.faces else null
             latestLive = result.live
             val old = sample
             val view = previewView.get()
@@ -704,7 +695,6 @@ class MainActivity : ComponentActivity() {
             } else sample = result
             if (single && held == null) {
                 held = reading
-                if (held != null) playMeterSound()
             }
             if (cal == null && !prefs.getBoolean("warned", false) && !isFinishing) {
                 prefs.edit().putBoolean("warned", true).apply()
@@ -772,12 +762,13 @@ class MainActivity : ComponentActivity() {
         if (!frozen || f.sample(x, y) ushr 24 == 0) return
         val old = spots.find { hypot(it.x - x, it.y - y) < .045 }
         if (old != null) {
+            soundFeedback.play(FeedbackCue.REMOVE)
             spots.remove(old)
             if (old.id == placedSpotId) clearPlacement()
         }
         else {
+            soundFeedback.play(FeedbackCue.ADD)
             spots += Spot(number++, x, y, f.spot(x, y, response))
-            playMeterSound()
         }
     }
 
@@ -794,17 +785,17 @@ class MainActivity : ComponentActivity() {
         prefs.edit().putBoolean("filmIsoLocked", isoLocked).putString("iso", manual.iso.toString()).apply()
     }
 
-    fun adjustCompensation(thirds: Int) {
+    fun adjustCompensation(ev: Double) {
         if (frozen || mode == "M") return
-        compensationThirds = thirds.coerceIn(-15, 15)
-        prefs.edit().putInt("compensationThirds", compensationThirds).apply()
+        compensationEv = ev.coerceIn(-5.0, 5.0)
+        put("compensationEv", compensationEv)
     }
 
     fun meterOnce() {
         if (frozen) return
+        playMeterSound()
         single = true
         held = reading
-        if (held != null) playMeterSound()
     }
 
     fun modeTo(v: String) {
@@ -925,12 +916,19 @@ class MainActivity : ComponentActivity() {
         range: ClosedFloatingPointRange<Double>,
         action: (Double) -> Unit,
     ) {
+        val keyboard = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or
+            (if (range.start < 0) InputType.TYPE_NUMBER_FLAG_SIGNED else 0)
+        inputValue(title, isoLabel(initial), keyboard, "请输入 ${n(range.start)} 至 ${n(range.endInclusive)}",
+            { it.toDoubleOrNull()?.takeIf { n -> n.isFinite() && n in range } }, action)
+    }
+
+    internal fun inputValue(title: String, initial: String, keyboard: Int, errorText: String,
+                            parse: (String) -> Double?, action: (Double) -> Unit) {
         val edit =
             EditText(this).apply {
-                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or
-                    (if (range.start < 0) InputType.TYPE_NUMBER_FLAG_SIGNED else 0)
+                inputType = keyboard
                 setSingleLine()
-                setText(isoLabel(initial))
+                setText(initial)
                 selectAll()
             }
         val dialog =
@@ -942,9 +940,8 @@ class MainActivity : ComponentActivity() {
                 .create()
         dialog.setOnShowListener {
             dialog.getButton(-1).setOnClickListener {
-                val v = edit.text.toString().trim().toDoubleOrNull()
-                if (v == null || !v.isFinite() || v !in range)
-                    edit.error = "请输入 " + n(range.start) + " 至 " + n(range.endInclusive)
+                val v = parse(edit.text.toString().trim())
+                if (v == null) edit.error = errorText
                 else {
                     dialog.dismiss()
                     action(v)

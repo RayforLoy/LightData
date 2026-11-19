@@ -27,13 +27,13 @@ private fun Choice(text:String, onClick:()->Unit) {
 internal fun MoreToolsDialog(a:MainActivity) {
     val page=a.toolsPage
     fun back() {
-        a.toolsPage=when(page) { "ground","flash" -> "lab"; "lab","shots","parallax","reports" -> "more"; else -> "" }
+        a.toolsPage=when(page) { "ground","flash" -> "lab"; "lab","shots","parallax","reports","optics" -> "more"; else -> "" }
     }
     Dialog(onDismissRequest={ back() },properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Column(Modifier.fillMaxSize().background(Color(0xff151617)).windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically) {
                 Box(Modifier.clickable { back() }.padding(12.dp)) { TextLine("‹ 返回",amber) }
-                TextLine(when(page) { "reports"->"留档"; "parallax"->"取景视差补偿"; "shots"->"构图快照"; "lab"->"实验室"; "ground"->"对焦屏点测光"; "flash"->"闪光灯测光"; else->"更多" })
+                TextLine(when(page) { "optics"->"光损补偿"; "reports"->"留档"; "parallax"->"取景视差补偿"; "shots"->"构图快照"; "lab"->"实验室"; "ground"->"对焦屏点测光"; "flash"->"闪光灯测光"; else->"更多" })
             }
             key(page) {
                 if (page == "reports") ReportArchivePanel(a) else Column(Modifier.verticalScroll(rememberScrollState()).fillMaxWidth()) {
@@ -46,28 +46,7 @@ internal fun MoreToolsDialog(a:MainActivity) {
                         }
                         "parallax" -> ParallaxSettings(a)
                         "shots" -> ShotsPanel(a)
-                        else -> {
-                            Choice(if (a.fullFinder.enabled) "退出全屏取景" else "全屏取景") {
-                                a.fullFinder.toggle()
-                                a.toolsPage = ""
-                            }
-                            Choice("取景视差补偿" + if (a.parallax.enabled) " · 开启" else "") { a.toolsPage="parallax" }
-                            Choice("留档") { a.toolsPage="reports" }
-                            Choice("构图快照") { a.toolsPage="shots" }
-                            Choice("实验室") { a.toolsPage="lab" }
-                            OpticsCompensationControls(a)
-                            Choice("导入测光确认音") { a.selectMeterSound() }
-                            Choice("恢复 Sony α7 III 确认音") {
-                                a.resetMeterSound()
-                                android.app.AlertDialog.Builder(a)
-                                    .setTitle("已恢复 Sony α7 III 确认音")
-                                    .setMessage("Sony A7III Focus Beep\n录音：iainmccurdy · Freesound\n许可：CC BY 4.0")
-                                    .setNeutralButton("录音来源") { _,_ ->
-                                        a.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse("https://freesound.org/people/iainmccurdy/sounds/613889/")))
-                                    }.setPositiveButton("完成",null).show()
-                            }
-                        }
+                        "optics" -> OpticsCompensationControls(a)
                     }
                 }
             }

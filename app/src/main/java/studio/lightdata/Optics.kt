@@ -224,7 +224,12 @@ val speeds =
         )
         .map { it.toDouble() }
 
-fun timeLabel(t: Double) = if (t < 0.4) "1/" + (1 / t).roundToInt() else n(t) + "″"
+fun timeLabel(t: Double): String {
+    val denominator = 1.0 / t
+    return if (t < 0.4 && abs(denominator - round(denominator)) < 1e-8 && denominator <= Int.MAX_VALUE)
+        "1/" + denominator.roundToInt()
+    else java.math.BigDecimal.valueOf(t).round(java.math.MathContext(5)).stripTrailingZeros().toPlainString() + "″"
+}
 
 data class Exposure(val t: Double, val a: Double, val iso: Double) {
     val ev
@@ -325,7 +330,11 @@ data class Frame(
     val timestampNs: Long = 0,
     val encoding: YuvEncoding = YuvEncoding.default,
     val sensorReading: SensorReading? = null,
+    // Null: the HAL supplied no usable detection result for this lens/frame. Empty: no face.
+    val faces: List<FaceBox>? = null,
 ) {
+    val faceHistogram by lazy(LazyThreadSafetyMode.NONE) { faces?.firstOrNull()?.histogram(this) }
+
     fun sample(x: Double, y: Double): Int =
         pixels[(y * h).toInt().coerceIn(0, h - 1) * w + (x * w).toInt().coerceIn(0, w - 1)]
 

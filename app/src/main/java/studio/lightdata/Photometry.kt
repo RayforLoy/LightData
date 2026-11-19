@@ -77,6 +77,9 @@ fun Film.limit(relativeEv: Double): FilmLimit = when {
 
 data class HistogramWindow(val left: Double = -4.0, val span: Double = 24.0, val gain: Double = 1.0) {
     companion object {
+        fun automatic(sceneEv: Double?, zoneV: Double, followZone: Boolean): HistogramWindow =
+            if (followZone) HistogramWindow(zoneV - 8.0, 16.0) else following(sceneEv)
+
         fun following(sceneEv: Double?) = if (sceneEv == null) HistogramWindow()
             else HistogramWindow(2 * round(sceneEv / 2) - 8, 16.0)
     }
