@@ -802,11 +802,11 @@ private fun Meter(a: MainActivity) {
         if (a.frozen && a.placedSpotId != null) {
             Label("按 #${a.placedSpotId} 放置于 Zone ${a.placedZone}", 12, amber)
         } else if (a.mode == "M") {
-            Label(if (a.sample == null) "— EV" else "曝光偏差  " + signed((a.held ?: a.reading ?: a.effectiveMiddleEv) - a.effectiveMiddleEv) + " EV",
+            Label(if (a.sample == null) "— EV" else "曝光偏差  " + signed((a.meterMiddleTarget ?: a.effectiveMiddleEv) - a.effectiveMiddleEv) + " EV",
                 12, amber, Modifier.padding(vertical = 4.dp), monoType = true)
         } else {
             val requested = a.compensationEv
-            val residual = (a.held ?: a.reading)?.let { it - a.effectiveMiddleEv - requested }
+            val residual = a.meterMiddleTarget?.let { it - a.effectiveMiddleEv - requested }
             ExposureCompensation(requested, residual, !a.frozen, a::adjustCompensation) {
                 a.input("曝光补偿（EV）", a.compensationEv, -5.0..5.0, a::adjustCompensation)
             }
@@ -1172,6 +1172,20 @@ private fun Settings(a: MainActivity, m: Modifier) {
             return@Column
         }
         Setting("声音", "音效设置") { soundSettings = true }
+        FinderSwitch("肤色自动提亮", a.skinLiftEnabled) { a.configureSkinLift(it, a.skinLiftEv) }
+        if (a.skinLiftEnabled) {
+            val zones = listOf("0","I","II","III","IV","V","VI","VII","VIII","IX","X")
+            fun zoneLabel(zone: Int) = "Zone " + zones[zone] + "（" + signed(zone - 5.0) + " EV）"
+            val zone = 5.0 + a.skinLiftEv
+            val label = if (zone == zone.toInt().toDouble()) zoneLabel(zone.toInt())
+                else "第 " + n(zone) + " 区（" + signed(a.skinLiftEv) + " EV）"
+            Setting("人脸目标分区", label) {
+                a.choose("人脸目标分区", (0..10).map(::zoneLabel) + "自定义 EV…") { index ->
+                    if (index <= 10) a.configureSkinLift(true, index - 5.0)
+                    else a.input("人脸曝光补偿（EV）", a.skinLiftEv, -5.0..5.0) { a.configureSkinLift(true, it) }
+                }
+            }
+        }
         fun open(url: String) {
             try {
                 a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))

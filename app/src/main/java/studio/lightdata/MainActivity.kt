@@ -258,6 +258,30 @@ class MainActivity : ComponentActivity() {
 
     var faceMeterEnabled by mutableStateOf(false)
         private set
+    var skinLiftEnabled by mutableStateOf(true)
+        private set
+    var skinLiftEv by mutableDoubleStateOf(1.0)
+        private set
+    private var heldFace by mutableStateOf(false)
+    private val liveFaceHistogram get() =
+        if (faceMeterEnabled && !scanActive && !runningCal) sample?.frame?.faceHistogram else null
+    val appliedSkinEv get() = if (skinLiftEnabled && faceMeterEnabled && !scanActive && !runningCal &&
+        placedSpotId == null && (if (held != null) heldFace else liveFaceHistogram != null)) skinLiftEv else 0.0
+    val meterMiddleTarget get() = (held ?: reading)?.minus(appliedSkinEv)
+
+    fun configureSkinLift(enabled: Boolean, ev: Double) {
+        if (!ev.isFinite() || ev !in -5.0..5.0) return
+        skinLiftEnabled = enabled
+        skinLiftEv = ev
+        prefs.edit().putBoolean("skinLiftEnabled", enabled).putString("skinLiftEv", ev.toString()).apply()
+        if (frozen) frozenExposure = meteredExposure()
+    }
+
+    private fun holdReading() {
+        heldFace = liveFaceHistogram != null
+        held = reading
+    }
+
     private var latestFaces by mutableStateOf<List<FaceBox>?>(null)
     val facesForOverlay get() = if (frozen) sample?.frame?.faces else latestFaces
     val faceMeterStatus get() = when {
@@ -282,7 +306,7 @@ class MainActivity : ComponentActivity() {
     val reading: Double? get() {
         val s = sample ?: return null
         val lut = response
-        val histogram = if (faceMeterEnabled && !scanActive) s.frame.faceHistogram ?: s.hist else s.hist
+        val histogram = liveFaceHistogram ?: s.hist
         if (meteredHist !== histogram || meteredLut !== lut) {
             meteredOffset = if (histogram.any { it > 0 }) meter(histogram,lut) else null
             meteredHist=histogram
@@ -357,7 +381,7 @@ class MainActivity : ComponentActivity() {
 
     private fun meteredExposure(): Exposure {
         val anchor = if (frozen) spots.find { it.id == placedSpotId } else null
-        val middle = anchor?.let { zoneMiddleEv(it.ev, placedZone) } ?: held ?: reading ?: manual.ev
+        val middle = anchor?.let { zoneMiddleEv(it.ev, placedZone) } ?: meterMiddleTarget ?: manual.ev
         return shootingExposure(mode, manual, middle, opticalLoss, compensationEv, anchor != null)
     }
 
@@ -436,6 +460,8 @@ class MainActivity : ComponentActivity() {
                 },
                 { !frozen },
             )
+        skinLiftEnabled = prefs.getBoolean("skinLiftEnabled", true)
+        skinLiftEv = saved("skinLiftEv", 1.0).takeIf { it in -5.0..5.0 } ?: 1.0
         faceMeterEnabled = prefs.getBoolean("faceMeter", false)
         rig.setFaceDetection(faceMeterEnabled)
         measuredOpticalLoss = prefs.getString("measuredOpticalLoss", null)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }
@@ -695,7 +721,7 @@ class MainActivity : ComponentActivity() {
                 view.advance(result.live,effectiveMiddleEv)
             } else sample = result
             if (single && held == null) {
-                held = reading
+                holdReading()
             }
             if (cal == null && !prefs.getBoolean("warned", false) && !isFinishing) {
                 prefs.edit().putBoolean("warned", true).apply()
@@ -796,7 +822,7 @@ class MainActivity : ComponentActivity() {
         if (frozen) return
         playMeterSound()
         single = true
-        held = reading
+        holdReading()
     }
 
     fun modeTo(v: String) {

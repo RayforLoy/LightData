@@ -21,7 +21,7 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
     val formatAtTap = format
     val focalAtTap = focal
     val modeAtTap = mode
-    val compensation = if (mode == "M" || placedSpotId != null) 0.0 else compensationEv
+    val compensation = if (mode == "M" || placedSpotId != null) 0.0 else compensationEv + appliedSkinEv
     val atlas = if (useLut && preview) activeAtlas?.takeIf { it.entry.file == variant?.file } else null
     val look = Look(frame,response,frame.cameraEv-middle,filmAtTap,preview,mode=="M",style,atlas)
     val points = spots.toList()
@@ -52,11 +52,12 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
         }
         if (faceMeterEnabled) add("人脸重点测光" to faceMeterStatus)
         add((if (faceMeterEnabled && !scanActive && frame.faceHistogram != null) "人脸测光" else "场景测光") to "${n(scene)} EV100")
+        if (appliedSkinEv != 0.0) add("人脸目标分区" to "第 ${n(5 + appliedSkinEv)} 区（${signed(appliedSkinEv)} EV）")
         held?.let { add("锁定读数" to "${n(it)} EV100") }
         add("胶片 / 感光度" to "${filmAtTap.name} · 标称 ISO ${isoLabel(filmIso)} · " +
             if (isoLocked) "跟随胶片" else "手动 ISO")
         add("中灰与曝光界限" to "Zone V ${n(middle)} · 欠 ${n(middle+filmAtTap.low)} · 过 ${n(middle+filmAtTap.high)} EV100")
-        add("相对测光偏差" to "${signed((held ?: scene)-middle)} EV")
+        add("相对测光偏差" to "${signed((meterMiddleTarget ?: scene)-middle)} EV")
         add("倒易律" to (rec.exposureSeconds?.let { timeLabel(it)+" · " }.orEmpty() + rec.label +
             if(rec.networkEstimate) " · 数据来源网络" else ""))
         add("光损补偿" to (if(useMeasuredLoss) "毛玻璃实测" else "几何计算") + " ${signed(opticalLoss)} EV")
