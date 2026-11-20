@@ -35,16 +35,16 @@ private fun MainActivity.customFormatMenu() {
                     val size = Format("自定义", width * factor, height * factor)
                     if (i == presets.size) applyFormat(size)
                     else {
-                        val name = EditText(this).apply { setSingleLine(); hint = "例如 612 片夹" }
-                        val dialog = AlertDialog.Builder(this).setTitle("保存画幅预设").setView(name)
+                        val name = EditText(this).apply { setSingleLine(); hint = tr("例如 612 片夹") }
+                        val dialog = MeterDialog(this).setTitle("保存画幅预设").setView(name)
                             .setNegativeButton("取消", null).setPositiveButton("保存并使用", null).create()
                         dialog.setOnShowListener {
                             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                                 val title = name.text.toString().trim()
                                 when {
-                                    title.isEmpty() -> name.error = "请输入预设名称"
+                                    title.isEmpty() -> name.error = tr("请输入预设名称")
                                     title == "自定义" || (formats + presets).any { it.name == title } ->
-                                        name.error = "这个名称已被使用"
+                                        name.error = tr("这个名称已被使用")
                                     else -> {
                                         data.put(JSONObject().put("name", title).put("width", size.w).put("height", size.h))
                                         prefs.edit().putString("formatPresets", data.toString()).apply()

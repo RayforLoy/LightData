@@ -149,7 +149,7 @@ internal class ReportStore(private val context: Context) {
                 }
             }
         }
-        val wrapped = rows.map { (label,value) -> wrap(label,labelWidth-15) to wrap(value,inner-labelWidth) }
+        val wrapped = rows.map { (label,value) -> wrap(tr(label),labelWidth-15) to wrap(tr(value),inner-labelWidth) }
         val rowsTop = 226f + photoH + if(showHistogram) 284f else 0f
         val height = (rowsTop + wrapped.sumOf { maxOf(it.first.size,it.second.size)*37 + 24 } + 38).roundToInt()
         val bmp = Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888)
@@ -159,7 +159,7 @@ internal class ReportStore(private val context: Context) {
             paint.textSize=size; paint.color=color
             canvas.drawText(value,x,y,paint)
         }
-        text("LightData  /  测光留档",margin,65f,42f)
+        text(tr("LightData  /  测光留档"),margin,65f,42f)
         val date=SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z",Locale.US).format(Date(report.timeMs))
         paint.textSize=24f
         text(date,width-margin-paint.measureText(date),63f,24f)

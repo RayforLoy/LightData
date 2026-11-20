@@ -24,7 +24,8 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
     val compensation = if (mode == "M" || placedSpotId != null) 0.0 else compensationEv + appliedSkinEv
     val atlas = if (useLut && preview) activeAtlas?.takeIf { it.entry.file == variant?.file } else null
     val look = Look(frame,response,frame.cameraEv-middle,filmAtTap,preview,mode=="M",style,atlas)
-    val points = spots.toList()
+    val tracked = spatial.views
+    val points = spots.toList() + tracked.filter { it.spot.id > 0 && !it.stale }.map { it.spot }
     val chart = HistogramWindow.automatic(scene, middle, centerHistogramOnZone)
     val bins = chart.bins(measured.hist,response,frame.cameraEv,128)
     val maxDensity = ceil(filmAtTap.dots.maxOf { it.second }).coerceAtLeast(.001)
@@ -52,9 +53,9 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
         }
         if (faceMeterEnabled) add("人脸重点测光" to faceMeterStatus)
         add((if (faceMeterEnabled && !scanActive && frame.faceHistogram != null) "人脸测光" else "场景测光") to "${n(scene)} EV100")
-        if (appliedSkinEv != 0.0) add("人脸目标分区" to "第 ${n(5 + appliedSkinEv)} 区（${signed(appliedSkinEv)} EV）")
+        if (appliedSkinEv != 0.0) add("人脸目标分区" to tr("第 %s 区（%s EV）").format(n(5 + appliedSkinEv),signed(appliedSkinEv)))
         held?.let { add("锁定读数" to "${n(it)} EV100") }
-        add("胶片 / 感光度" to "${filmAtTap.name} · 标称 ISO ${isoLabel(filmIso)} · " +
+        add("胶片 / 感光度" to "${filmAtTap.name} · ${if (filmSpeedLabel == "EI") "试拍 EI" else "标称 ISO"} ${isoLabel(filmIso)} · " +
             if (isoLocked) "跟随胶片" else "手动 ISO")
         add("中灰与曝光界限" to "Zone V ${n(middle)} · 欠 ${n(middle+filmAtTap.low)} · 过 ${n(middle+filmAtTap.high)} EV100")
         add("相对测光偏差" to "${signed((meterMiddleTarget ?: scene)-middle)} EV")
@@ -73,11 +74,17 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
             val distance = if(parallax.distanceMm.isInfinite()) "∞" else "${n(parallax.distanceMm)} mm"
             "X ${n(parallax.xMm)} / Y ${n(parallax.yMm)} / Z ${n(parallax.zMm)} mm · 物距 $distance"
         } else "关闭")
-        add("拼接" to (measured.scan?.let { "${scanAlgorithm} · ${it.captures} 帧 · 覆盖 ${n(100*it.coverage)}%" }
+        add("拼接" to (measured.scan?.let { "${scanAlgorithm} · ${it.captures} 帧 · 覆盖率 ${n(100*it.coverage)}%" }
             ?: if(measured.missing) "超出镜头可覆盖视角" else "单镜头取景"))
         level?.let { add("水平状态" to "横滚 ${n(Math.toDegrees(it.rollRadians))}° · 俯仰 ${n(Math.toDegrees(it.pitchRadians))}°") }
         shot?.let { add("构图叠影" to "${it.label} · ${n(100.0*opacity)}%") }
         placedSpotId?.let { add("测光点放置" to "#$it → Zone $placedZone") }
+        if (cctEnabled) frame.whitePoint?.let { add("AWB" to "≈ ${it.kelvin} K") }
+        tracked.firstOrNull { it.spot.id==0 }?.let { v ->
+            add("色温参考点" to ((v.kelvin?.let { "$it K" } ?: "— K") + if (v.stale) " · 上次读数" else ""))
+        }
+        for (v in tracked.filter { it.spot.id>0 && it.stale })
+            add("动态测光点 #${v.spot.id}" to "${n(v.spot.ev)} EV100 · 上次读数")
         for (point in points) add("测光点 #${point.id}" to "${n(point.ev)} EV100 · 相对中灰 ${signed(point.ev-middle)} EV · X ${n(100*point.x)}% / Y ${n(100*point.y)}%")
     }
     val gps = location?.let(::Location)

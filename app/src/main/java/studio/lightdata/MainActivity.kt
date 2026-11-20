@@ -32,6 +32,9 @@ fun isoLabel(value: Double): String =
     java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString()
 
 class MainActivity : ComponentActivity() {
+    internal val temperature by lazy { TemperatureOptions(this) }
+    val cctEnabled get() = temperature.enabled
+    fun openColorTemperatureOptions() = temperature.open()
     private lateinit var reportSession: ReportSession
     val reportEnabled get() = reportSession.enabled
     val reportLocationEnabled get() = reportSession.locationEnabled
@@ -96,6 +99,7 @@ class MainActivity : ComponentActivity() {
     var manual by mutableStateOf(Exposure(1.0 / 125, 8.0, 100.0))
     var film by mutableStateOf(films.first())
         private set
+    val filmSpeedLabel get() = if (filmRecords.any { it.film.name == film.name && it.experimentalEi }) "EI" else "ISO"
     var filmIso by mutableDoubleStateOf(filmRecords.first().iso.toDouble())
         private set
     var isoLocked by mutableStateOf(true)
@@ -141,7 +145,7 @@ class MainActivity : ComponentActivity() {
             val wasTruncated = scanShots.truncated
             val stored = scanShots.add(shot,shot.jpeg.size.toLong()+shot.meta.toByteArray().size+256,accepted)
             if (!stored && !wasTruncated) runOnUiThread {
-                android.widget.Toast.makeText(this,"拼接诊断记录已达容量上限，已保留开头的连续记录",1).show()
+                android.widget.Toast.makeText(this,tr("拼接诊断记录已达容量上限，已保留开头的连续记录"),1).show()
             }
         }
     }
@@ -166,18 +170,30 @@ class MainActivity : ComponentActivity() {
                             zip.putNextEntry(java.util.zip.ZipEntry("${i+1}.$ext")); zip.write(data); zip.closeEntry()
                         }
                     }
-                }.onFailure { runOnUiThread { android.widget.Toast.makeText(this,"导出失败",0).show() } }
+                }.onFailure { runOnUiThread { android.widget.Toast.makeText(this,tr("导出失败"),0).show() } }
             }.start()
         }
     }
     fun exportScan() {
-        if (synchronized(scanShots) { scanShots.isEmpty() }) android.widget.Toast.makeText(this,"请先开启记录并进行拼接",0).show()
+        if (synchronized(scanShots) { scanShots.isEmpty() }) android.widget.Toast.makeText(this,tr("请先开启记录并进行拼接"),0).show()
         else saveScan.launch("LightData-panorama.zip")
     }
     var showFps by mutableStateOf(false)
     var showLevel by mutableStateOf(true)
     var renderedFps by mutableIntStateOf(0)
     var previewView = java.lang.ref.WeakReference<Preview>(null)
+    internal val spatial = SpatialMeter(this)
+    var dynamicEnabled by mutableStateOf(false)
+        private set
+    fun toggleDynamicSpots() {
+        if (!dynamicEnabled && (runningCal || scanActive)) { notifyUser("请先退出拼接或校准"); return }
+        if (frozen) toggleFreeze()
+        dynamicEnabled = !dynamicEnabled
+        if (!dynamicEnabled) spatial.clear(false)
+    }
+    fun placeTemperatureReference(x: Double,y: Double) = spatial.place(x,y,true)
+    fun clearTemperatureReference() = spatial.clear(true)
+
     var latestLive: LiveCapture? = null
         private set
     private val frameTimes = java.util.ArrayDeque<Long>()
@@ -196,7 +212,7 @@ class MainActivity : ComponentActivity() {
     }
     private val meterWorker = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val measuring = java.util.concurrent.atomic.AtomicBoolean()
-    private data class Measurement(val epoch: Int, val turn: Int, val frame: Frame, val hist: IntArray)
+    private data class Measurement(val epoch: Int, val turn: Int, val frame: Frame, val hist: IntArray, val trackingPose: GatePose? = null)
     @Volatile private var lastMeasure: Measurement? = null
     private var lastMeasureAt = 0L
     internal val lutAssets by lazy { LutAssets(assets) }
@@ -359,7 +375,7 @@ class MainActivity : ComponentActivity() {
         val subject = source.spot(x,y,response)
         val loss = measuredTransmissionLoss(subject,screen)
         val text = "物点 " + n(subject) + " EV100 · 毛玻璃 " + n(screen) + " EV100"
-        val dialog = AlertDialog.Builder(this).setTitle("同点光损实测")
+        val dialog = MeterDialog(this).setTitle("同点光损实测")
         if (loss == null) {
             dialog.setMessage(text + "\n毛玻璃读数高于物点，请核对校准光圈、光照和所选物点。")
         } else {
@@ -433,6 +449,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
+        UiLanguage.initialize(this)
         reportSession = ReportSession(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         importCue = FeedbackCue.entries.find { it.name == b?.getString("soundImportCue") } ?: FeedbackCue.METER
@@ -460,6 +477,7 @@ class MainActivity : ComponentActivity() {
                 },
                 { !frozen },
             )
+        rig.estimateWhitePoint = cctEnabled
         skinLiftEnabled = prefs.getBoolean("skinLiftEnabled", true)
         skinLiftEv = saved("skinLiftEv", 1.0).takeIf { it in -5.0..5.0 } ?: 1.0
         faceMeterEnabled = prefs.getBoolean("faceMeter", false)
@@ -537,6 +555,7 @@ class MainActivity : ComponentActivity() {
         active = false
         reportSession.pause()
         epoch++
+        spatial.reset()
         pose.stop()
         rig.stop()
         scanRequest?.reanchor = true
@@ -563,6 +582,7 @@ class MainActivity : ComponentActivity() {
         cancelScan()
         rig.destroy()
         soundFeedback.close()
+        spatial.close()
         meterWorker.shutdownNow()
         super.onDestroy()
     }
@@ -614,6 +634,7 @@ class MainActivity : ComponentActivity() {
         cancelScan()
         epoch++
         frozen = false
+        spatial.reset()
         spots.clear()
         held = null
         if (!keepPreview || force || current != next) sample = null
@@ -644,6 +665,7 @@ class MainActivity : ComponentActivity() {
         val goal = gate.field
         val live = LiveCapture(packet,ev,l.id,timestamp,turn,src,goal,gate.right,gate.up)
         val now = android.os.SystemClock.elapsedRealtime()
+        live.trackingPose = pose.axes(rot,packet.poseTimestampNs)?.let { GatePose(it,gate) }
         val displayTurn = Math.floorMod(scanRotation - rot, 4) * 90
         val scan = request?.let {
             val frame by lazy(LazyThreadSafetyMode.NONE) { live.panoramaFrame() }
@@ -661,7 +683,7 @@ class MainActivity : ComponentActivity() {
         }
         fun measure(): Measurement {
             val full = live.fullFrame()
-            return Measurement(token,turn,full,full.distribution())
+            return Measurement(token,turn,full,full.distribution(),live.trackingPose)
         }
         val measurement = if (scan != null) {
             val cached = lastScanMeasurement
@@ -710,6 +732,10 @@ class MainActivity : ComponentActivity() {
                     "Frame from " + l.label + " via " + l.owner + " " + out.w + "x" + out.h,
                 )
             }
+            if (request == null && !runningCal) {
+                spatial.advance(live.trackingPose)
+                spatial.measure(out,measurement.trackingPose,response)
+            }
             latestFaces = if (faceMeterEnabled) result.live?.faces else null
             latestLive = result.live
             val old = sample
@@ -725,7 +751,7 @@ class MainActivity : ComponentActivity() {
             }
             if (cal == null && !prefs.getBoolean("warned", false) && !isFinishing) {
                 prefs.edit().putBoolean("warned", true).apply()
-                AlertDialog.Builder(this)
+                MeterDialog(this)
                     .setTitle("当前镜头尚未校准")
                     .setMessage("曝光与分区使用估算值。可在设置中使用灰卡或阶梯卡校准；每个镜头独立保存。")
                     .setPositiveButton("继续取景", null)
@@ -755,6 +781,8 @@ class MainActivity : ComponentActivity() {
             recordedAccepted = 0
         }
         rig.setPanoramaLock(true)
+        spatial.reset()
+        dynamicEnabled = false
         scanRequest = ScanRequest(windowManager.defaultDisplay.rotation)
         epoch++
     }
@@ -762,6 +790,8 @@ class MainActivity : ComponentActivity() {
     fun toggleFreeze() {
         val current = sample ?: return
         if (!frozen) {
+            dynamicEnabled = false
+            spatial.reset()
             frozenExposure = exposure
             val rotation = windowManager.defaultDisplay.rotation
             frozenAxes = pose.axes(rotation)
@@ -928,10 +958,10 @@ class MainActivity : ComponentActivity() {
         }.start()
     }
 
-    fun notifyUser(text: String) = android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_LONG).show()
+    fun notifyUser(text: String) = android.widget.Toast.makeText(this, tr(text), android.widget.Toast.LENGTH_LONG).show()
 
     fun choose(title: String, items: List<String>, action: (Int) -> Unit) {
-        AlertDialog.Builder(this)
+        MeterDialog(this)
             .setTitle(title)
             .setItems(items.toTypedArray()) { _, i -> action(i) }
             .show()
@@ -959,7 +989,7 @@ class MainActivity : ComponentActivity() {
                 selectAll()
             }
         val dialog =
-            AlertDialog.Builder(this)
+            MeterDialog(this)
                 .setTitle(title)
                 .setView(edit)
                 .setNegativeButton("取消", null)
@@ -968,7 +998,7 @@ class MainActivity : ComponentActivity() {
         dialog.setOnShowListener {
             dialog.getButton(-1).setOnClickListener {
                 val v = parse(edit.text.toString().trim())
-                if (v == null) edit.error = errorText
+                if (v == null) edit.error = tr(errorText)
                 else {
                     dialog.dismiss()
                     action(v)
@@ -1001,7 +1031,7 @@ class MainActivity : ComponentActivity() {
         choose("逐镜头校准", listOf("均匀灰卡（推荐）", "九级阶梯卡（推荐）", "现场估测")) { i ->
             val method = listOf("灰卡", "阶梯卡", "现场")[i]
             fun confirm(step: Double) {
-                AlertDialog.Builder(this)
+                MeterDialog(this)
                     .setTitle(method + "校准")
                     .setMessage(
                         listOf(

@@ -1,0 +1,120 @@
+无法读取构图快照	Could not read the framing snapshot
+图像编码失败	Image encoding failed
+保存构图快照失败	Could not save the framing snapshot
+测光面板背景	Meter background
+返回取景	Back to finder
+预设名称	Preset name
+保存当前横屏布局	Save landscape layout
+保存当前竖屏布局	Save portrait layout
+已保存布局「%s」	Saved layout “%s”
+覆盖已有布局「%s」？	Replace the existing layout “%s”?
+覆盖	Replace
+取景操作	Finder controls
+移动取景框	Move frame
+移动直方图	Move histogram
+移动测光表	Move meter
+取景框大小	Frame size
+保存布局预设	Save layout preset
+恢复默认布局	Restore default layout
+退出全屏	Exit full screen
+使用预设	Load preset
+全屏菜单	Full-screen menu
+取景框	Frame
+测光表	Meter
+取景器视差补偿	Viewfinder parallax
+处理中…	Working…
+距离过近。请增加被摄距离，或检查 Z 偏移与拍摄镜头焦距。	Too close. Increase subject distance or check the Z offset and taking-lens focal length.
+已开启	On
+已关闭	Off
+按设备默认方向，从相机后方向前看。以手机取景镜头中心为零点，量取拍摄镜头中心的偏移。	Hold the device in its natural orientation and look forward from behind the camera. Measure the offset from the center of the phone’s finder lens to the center of the taking lens.
+背视 · 右 X+ / 上 Y+	Rear view · +X right / +Y up
+侧视 · 向前 Z+ / 上 Y+	Side view · +Z forward / +Y up
+○ 取景镜头     ● 拍摄镜头	○ Finder lens     ● Taking lens
+X · 向右为正	X · positive to the right
+Y · 向上为正	Y · positive upward
+Z · 朝被摄物为正	Z · positive toward subject
+被摄物至焦平面	Subject to focal plane
+校正在所选距离的平面上成立。镜头光轴应平行；应用以标称焦距近似焦平面至拍摄镜头的距离，近摄时请核对实际取景。	Keep the optical axes parallel. Compensation applies at the selected subject distance. The app approximates lens-to-film distance with nominal focal length; check framing on the camera for close-ups.
+被摄物至焦平面距离	Subject-to-focal-plane distance
+输入物距	Enter subject distance
+物距	Subject distance
+开启	On
+无法读取这份报告	Could not read this report
+正在读取…	Loading…
+测光留档报告	Metering report
+无法读取留档：	Could not read archive:
+双击取景器留档	Double-tap finder to save a report
+将当前位置写入报告	Include current location
+双击取景画面保存报告至系统相册 Pictures/LightData/Reports。	Double-tap the finder to save a report to Pictures/LightData/Reports.
+授权访问存储以查看和保存留档	Allow storage access to view and save reports
+暂无留档	No reports yet
+查看	View
+‹ 返回	‹ Back
+在相册中打开	Open in gallery
+设备上没有可用的图片查看器	No image viewer is available
+删除	Delete
+从留档和系统相册中删除这份报告？	Delete this report from the archive and gallery?
+删除报告	Delete report
+这份报告已移除	Report removed
+删除失败：	Could not delete:
+等待有效取景和测光后再留档	Wait for a valid image and meter reading before saving
+画幅	Format
+标称视角（水平 × 垂直）	Nominal angle of view (horizontal × vertical)
+取景镜头	Finder lens
+画面已冻结	Frame held
+手机采集参数	Phone capture settings
+后级增益	Post-RAW gain
+场景测光	Scene metering
+第 %s 区（%s EV）	Zone %s (%s EV)
+锁定读数	Held reading
+胶片 / 感光度	Film / speed
+标称 ISO	Box speed ISO
+手动 ISO	Manual ISO
+中灰与曝光界限	Middle gray and exposure limits
+相对测光偏差	Deviation from meter
+几何计算	Calculated
+滤镜 / 皮腔伸长量	Filter / bellows extension
+倒易律数据来源	Reciprocity data source
+取景预览	Finder preview
+取景分辨率	Finder resolution
+实时渲染倍率	Live render scale
+未校准 · 估测	Uncalibrated · estimate
+测光提示	Metering note
+环境极暗，读数可能不准确	Very low light; reading may be inaccurate
+拼接	Panorama
+覆盖率	Coverage
+超出镜头可覆盖视角	Exceeds the lens’s field of view
+单镜头取景	Single-lens framing
+水平状态	Camera level
+构图叠影	Snapshot overlay
+测光点放置	Spot placement
+相对中灰	Relative to middle gray
+取景器暂不可用	Finder unavailable
+无法建立取景图像缓冲区	Could not allocate the finder image buffer
+取景图像读取失败	Could not read the finder image
+场景 EV100 · 像素（对数）    /    胶片密度	Scene EV100 · pixel count (log)    /    film density
+场景 EV100 · 像素（线性）    /    胶片密度	Scene EV100 · pixel count (linear)    /    film density
+Android 9 需要存储权限才能在系统相册保存和管理报告	On Android 9, allow storage access to save and manage reports in the gallery
+未获得位置权限，报告仍可保存	Location permission was not granted. Reports can still be saved.
+等待读取画面和测光值	Waiting for an image and meter reading
+留档失败：	Could not save report:
+无法读取画面	Could not read the image
+报告已存入相册 · 暂无位置	Saved to gallery · location unavailable
+报告已存入相册	Report saved to gallery
+报告保存失败：	Could not save report:
+无法写入相册	Could not write to gallery
+报告编码失败	Could not encode report image
+系统相册无法创建图片	Could not create an image in the gallery
+系统相册无法写入图片	Could not write the image to the gallery
+无法创建留档相册	Could not create the report album
+无法保存报告	Could not save report
+系统相册无法登记图片	Could not register the image in the gallery
+系统相册暂不可用	Gallery unavailable
+曝光模式 / 曝光补偿	Mode / exposure compensation
+位置	Location
+LightData  /  测光留档	LightData  /  Metering report
+正常取景	Standard finder
+导出拼接诊断 ZIP	Export panorama diagnostics ZIP
+电子水平尺 · 俯拍水平泡	Electronic level / overhead bubble level
+取景器帧率	Finder frame rate
+曝光预览	Exposure preview

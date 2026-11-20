@@ -25,6 +25,7 @@ data class Lens(
     val globalFaceMode: Boolean = false,
     val physicalFaceMode: Boolean = false,
 ) {
+    internal val whiteEstimator by lazy { CameraWhiteEstimator(c) }
     val label
         get() = "镜头 " + id + " · " + (2 * Math.toDegrees(atan(view.x))).roundToInt() + "°"
 }
@@ -159,6 +160,7 @@ class Rig(
         }
     }
 
+    @Volatile var estimateWhitePoint = false
     private var detectFaces = false
     private var faceRequestRejected = false
     fun setFaceDetection(enabled: Boolean) {
@@ -185,6 +187,7 @@ class Rig(
     class Packet(val w: Int, val h: Int, val planes: List<Plane>, val encoding: YuvEncoding) {
         var scanMetadata: String? = null
         var panoramaLowLight = false
+        var whitePoint: SceneWhite? = null
         var faces: List<FaceBox>? = null
         var sensorReading: SensorReading? = null
         var exposureMs = 0.0
@@ -223,7 +226,8 @@ class Rig(
     private var encoding = YuvEncoding.default
 
     private val images = linkedMapOf<Long, Packet>()
-    private val results = linkedMapOf<Long, Triple<CaptureResult, Int, Boolean>>()
+    private data class MatchedMetadata(val result: CaptureResult, val scanIndex: Int, val faces: Boolean, val sameLens: Boolean)
+    private val results = linkedMapOf<Long, MatchedMetadata>()
     private val rawGrid = linkedMapOf<Long, DoubleArray>()
 
     private fun clear() {
@@ -602,7 +606,7 @@ class Rig(
                         val ts = physical[CaptureResult.SENSOR_TIMESTAMP] ?: return
                         // Faces from a logical camera may use a different coordinate system.
                         val matchingFaceLens = l.id == l.owner || physical !== total
-                        results[ts] = Triple(physical, b?.index ?: -1, faces && matchingFaceLens)
+                        results[ts] = MatchedMetadata(physical, b?.index ?: -1, faces && matchingFaceLens, matchingFaceLens)
                         match(ts)
                         trim()
                     }
@@ -651,7 +655,7 @@ class Rig(
     }
 
     private fun match(ts: Long) {
-        val (meta, index, faceResult) = results[ts] ?: return
+        val (meta, index, faceResult, sameLens) = results[ts] ?: return
         val image = images[ts] ?: return
         val b = scan
         if (b != null && raw != null && rawGrid[ts] == null) return
@@ -747,6 +751,7 @@ class Rig(
                 .put("wbGains",wb?.let { org.json.JSONArray(listOf(it.red,it.greenEven,it.greenOdd,it.blue)) })
                 .toString()
         }
+        if (estimateWhitePoint && sameLens && b == null) image.whitePoint = l.whiteEstimator.estimate(meta)
         image.sensorReading = SensorReading(Exposure(time / 1e9, a, iso.toDouble()), boost)
         if (faceResult && meta[CaptureResult.STATISTICS_FACE_DETECT_MODE] != CaptureResult.STATISTICS_FACE_DETECT_MODE_OFF) {
             val active = if (meta[CaptureResult.DISTORTION_CORRECTION_MODE] == CaptureResult.DISTORTION_CORRECTION_MODE_OFF)

@@ -6,7 +6,6 @@ import android.os.Looper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,7 +42,7 @@ internal fun FlashLabPanel(a: MainActivity) {
         FlashText("连接 USB 小尾巴和兼容 1 kHz 音频脉冲的引闪适配器，设置闪光灯手动输出。选中已接引闪器的音频输出。",13)
         if(outputs.isEmpty()) FlashText("未发现 USB 音频输出",14,amber)
         for(out in outputs) {
-            BasicText((if(out.id==deviceId) "✓ " else "")+out.productName.toString()+" · USB "+out.id,
+            InstrumentText((if(out.id==deviceId) "✓ " else "")+out.productName.toString()+" · USB "+out.id,
                 Modifier.fillMaxWidth().clickable(enabled=!busy){ deviceId=out.id }.padding(8.dp),
                 style=TextStyle(color=if(out.id==deviceId) amber else Color.White,fontSize=14.sp))
         }
@@ -67,5 +66,5 @@ internal fun FlashLabPanel(a: MainActivity) {
 
 @Composable
 private fun FlashText(s:String,size:Int,color:Color=Color.White) {
-    BasicText(s,style=TextStyle(color=color,fontSize=size.sp))
+    InstrumentText(s,style=TextStyle(color=color,fontSize=size.sp))
 }

@@ -8,7 +8,6 @@ import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,7 +52,7 @@ private fun LiveCapture.groundEv(response: DoubleArray): Double? {
 @Composable
 private fun GroundLine(text: String, action: (() -> Unit)? = null) {
     val style = TextStyle(color = if (action == null) Color.LightGray else Color(0xffffc86c), fontSize = 14.sp)
-    BasicText(text, Modifier.fillMaxWidth().then(if (action == null) Modifier else
+    InstrumentText(text, Modifier.fillMaxWidth().then(if (action == null) Modifier else
         Modifier.background(Color(0xff262626)).clickable(onClick = action))
         .padding(horizontal = 10.dp, vertical = 8.dp), style)
 }

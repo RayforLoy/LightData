@@ -13,7 +13,6 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -169,18 +168,18 @@ internal class SoundFeedback(private val a: MainActivity) {
 @Composable
 internal fun SoundSettingsPanel(a: MainActivity) {
     for (cue in FeedbackCue.entries) {
-        BasicText(cue.title, Modifier.padding(top=12.dp,bottom=3.dp), style=TextStyle(color=Color.White,fontSize=16.sp))
+        InstrumentText(cue.title, Modifier.padding(top=12.dp,bottom=3.dp), style=TextStyle(color=Color.White,fontSize=16.sp))
         Row(Modifier.fillMaxWidth()) {
-            BasicText("导入音频",Modifier.clickable { a.selectSound(cue) }.padding(8.dp),
+            InstrumentText("导入音频",Modifier.clickable { a.selectSound(cue) }.padding(8.dp),
                 style=TextStyle(color=amber,fontSize=14.sp))
-            BasicText("恢复" + cue.defaultName, Modifier.clickable {
+            InstrumentText("恢复" + cue.defaultName, Modifier.clickable {
                 a.soundFeedback.reset(cue)
                 val source = when(cue) {
                     FeedbackCue.METER -> "613889"
                     FeedbackCue.ARCHIVE -> "613888"
                     else -> null
                 }
-                if (source != null) AlertDialog.Builder(a).setTitle("已恢复 " + cue.defaultName)
+                if (source != null) MeterDialog(a).setTitle("已恢复 " + cue.defaultName)
                     .setMessage("录音：iainmccurdy · Freesound\n许可：CC BY 4.0" +
                         if (cue == FeedbackCue.ARCHIVE) "\n截取一次快门并调整音量。" else "")
                     .setNeutralButton("录音来源") { _,_ -> a.startActivity(Intent(Intent.ACTION_VIEW,

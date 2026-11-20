@@ -266,7 +266,7 @@ internal class NegativePrint(private val points: List<Pair<Double, Double>>) {
     }
 }
 
-private fun densityAt(points: List<Pair<Double, Double>>, ev: Double): Double {
+internal fun densityAt(points: List<Pair<Double, Double>>, ev: Double): Double {
     val hit = points.binarySearchBy(ev) { it.first }
     if (hit >= 0) return points[hit].second
     val right = -hit - 1
@@ -332,6 +332,7 @@ data class Frame(
     val sensorReading: SensorReading? = null,
     // Null: the HAL supplied no usable detection result for this lens/frame. Empty: no face.
     val faces: List<FaceBox>? = null,
+    val whitePoint: SceneWhite? = null,
 ) {
     val faceHistogram by lazy(LazyThreadSafetyMode.NONE) { faces?.firstOrNull()?.histogram(this) }
 

@@ -1,0 +1,170 @@
+可用范围无法可靠拟合，请调整场景重试	Cannot fit the usable range. Adjust the scene and retry.
+实际曝光跨度不足，请调整照明	Exposure span is too narrow. Adjust the lighting.
+曝光序列响应不一致，请固定手机并使用稳定光源	Inconsistent bracket response. Steady the phone and use constant lighting.
+有效曝光样本不足，请重新采集	Too few usable exposures. Capture the bracket again.
+有效灰阶未覆盖中灰两侧，请调整照明	Gray steps must span both sides of middle gray. Adjust the lighting.
+未同时覆盖暗部和饱和高光，请调整照明或场景	The bracket must include shadows and clipped highlights. Adjust the scene or lighting.
+校准参数无效	Invalid calibration parameters
+检测到移动或光源闪烁，请固定手机	Motion or light flicker detected. Steady the phone.
+灰卡受光不均或未充满画面	Light the gray card evenly and fill the frame.
+灰卡	Gray card
+现场明暗跨度不足，请选择同时包含阴影和亮部的场景	Choose a wider range of tones with both shadows and highlights.
+现场	Scene
+相邻曝光间画面发生移动，请固定手机后重试	Movement between exposures. Steady the phone and retry.
+请将九级阶梯自暗至亮对齐取景框	Align the nine-step wedge with the frame, from dark to light.
+阶梯卡取样网格不完整	Incomplete step-wedge samples
+阶梯间隔与输入的 EV 不符，请确认参考卡	Measured spacing differs from the specified EV steps. Check the reference card.
+阶梯卡	Step wedge
+包围曝光失败，请重试	Bracketing failed. Please retry.
+已取消闪光测光	Flash metering canceled
+当前镜头缺少手动曝光或同步时钟，请切换镜头	Select a lens with manual exposure and a synchronized clock.
+摄像头不可用（	Camera unavailable (
+摄像头已断开，请重试	Camera disconnected. Please retry.
+无法开始闪光测光 · 	Cannot start flash metering ·
+无法打开镜头：	Cannot open lens:
+无法配置镜头：	Cannot configure lens:
+曝光请求失败：	Exposure request failed:
+未收到完整曝光帧，请重试	Incomplete exposure frame. Please retry.
+校准失败	Calibration failed
+校准 	Calibration
+此镜头未开放手动包围曝光	This lens does not support manual bracketing.
+设备不可用	Device unavailable
+该镜头不支持此采集组合，请切换镜头	This lens does not support this stream configuration. Select another lens.
+请先退出拼接或校准并等待镜头就绪	Exit panorama or calibration and wait for the camera.
+镜头尚未就绪	Lens is not ready
+镜头未执行指定的曝光参数	Lens did not apply the requested exposure.
+闪光测光已结束	Flash metering finished
+预览请求失败：	Preview request failed:
+），请重试	). Please retry.
+镜头 	Lens
+厂家图采样 · 第 	Manufacturer curve · p.
+ 页 · 	 ·
+型号手册 ↗	Datasheet ↗
+手册出处 ↗	Datasheet source ↗
+查找手册 ↗	Find datasheet ↗
+FOMA 黑白反转工艺	FOMA B&W reversal process
+乐凯	Lucky
+反转片	Reversal film
+彩色负片工艺，详见原资料	Color negative process; see original datasheet.
+彩色负片	Color negative
+按片基与乳剂选择原资料所列显影工艺	Use the development process listed for the film base and emulsion.
+通用近似曲线和预警范围。原资料用于型号、曝光指数和工艺。	Approximate curve and warning limits. The source identifies the stock, exposure index and process.
+黑白显影，按原资料选择显影液	B&W development; use a developer listed in the datasheet.
+黑白显影	B&W development
+黑白负片	B&W negative
+1 英寸	1-inch
+全幅	Full frame
+宝丽来 Go	Polaroid Go
+宝丽来 i-Type / 600 / SX-70	Polaroid i-Type / 600 / SX-70
+对角线	Diagonal
+按用户输入的宽容度生成近似响应。	Response estimated from the specified latitude.
+数码后背	Digital backs
+数码	Digital
+横边	Horizontal
+竖边	Vertical
+胶片	Film
+自定义数码	Custom digital
+自定义胶片	Custom film
+LUT 数据长度不符	Unexpected LUT data length
+LUT 文件校验失败	LUT checksum failed
+LightData 派生配置	LightData-derived profile
+上游配置烘焙	Baked from upstream profile
+ · 公式外推，建议试拍	 · Formula extrapolated; test suggested
+ · 公式外推	 · Formula extrapolated
+ · 数据来源网络	 · Online source
+ · 显影减 10%	 · Reduce development by 10%
+ · 显影减 20%	 · Reduce development by 20%
+ · 显影减 30%	 · Reduce development by 30%
+ 秒	 s
+10M 滤镜，开大 2/3 档	10M filter, open 2/3 stop
+12.5M 滤镜，开大 1 档	12.5M filter, open 1 stop
+2.5G 滤镜，开大 1/3 档	2.5G filter, open 1/3 stop
+5M 滤镜，开大 1/3 档	5M filter, open 1/3 stop
+7.5M 滤镜，开大 1/2 档	7.5M filter, open 1/2 stop
+厂家未给出补偿值	No manufacturer correction specified
+开大 1/2 档，保留测得快门	Open 1/2 stop; keep the metered shutter time
+开大 1 档	Open 1 stop
+开大 1/2 档	Open 1/2 stop
+开大 1/3 档	Open 1/3 stop
+开大 2 档	Open 2 stops
+快门时间无效	Invalid shutter time
+无此预设的补偿资料	No correction data for this stock
+无需补偿	No correction needed
+日光加 CC10R，快门补偿未给出	Daylight: add CC10R; shutter correction unspecified
+缺少此快门的补偿资料	No correction data at this shutter time
+补偿后 	Corrected:
+超出可计算范围	Outside the supported range
+AWB · 暂无数据	AWB · unavailable
+AWB 显示当前镜头估算的光源色温。拖动取景器右上角的读数到同一光线下的灰卡或白色中性物体，可估算该处色温。彩色物体、混合光、过暗或过亮会影响结果；部分镜头缺少所需的标定数据。	AWB estimates the illuminant from the current lens. Drag the reading onto a neutral gray or white surface in the same light to estimate its local color temperature. Colored surfaces, mixed light, shadows and clipped highlights can affect accuracy. Some lenses lack the required calibration data.
+关闭色温估测	Disable color temperature
+开启色温估测	Enable color temperature
+色温估测	Color temperature
+未收到镜头人脸数据 · 全画面测光	Face data unavailable · frame metering
+未检测到人脸 · 全画面测光	No face detected · frame metering
+人脸重点测光	Face-priority metering
+关闭 AWB 色温显示	Hide AWB temperature
+开启 AWB 色温显示	Show AWB temperature
+关闭色温参考点	Disable temperature reference
+开启色温参考点	Enable temperature reference
+色温参考点	Temperature reference
+135 · Microfine，20°C，10 分钟；中灰参考 log H -0.9，边界按图示两端内缩 0.10 D。	135 · Microfine, 20°C, 10 min; middle-gray reference  log H -0.9, limits inset 0.10 D from both plotted ends.
+135，T-MAX 显影液，小罐 20°C 7 分钟，漫射视觉密度，中灰近似取 H=14/EI lx·s，第7页。	135, T-MAX developer, small tank 20°C 7 min, diffuse visual density, middle gray approximated at  H=14/EI lx·s, p. 7.
+5500 K，1/20 秒，Microphen 20°C 6 分钟（曲线 2）。三份原图的中线形状近同，各自采样；相对曝光轴 −2.45 作中灰参照，预警为采样两端内缩 0.10 D。	5500 K, 1/20 s, Microphen 20°C 6 min(curve 2). The three source plots have similarly shaped center curves, sampled separately. Middle-gray reference is −2.45 relative exposure; limits are inset 0.10 D from both ends.
+5500 K，1/20 秒，Microphen 20°C 7 分钟（曲线 2）。三份原图的中线形状近同，各自采样；相对曝光轴 −2.45 作中灰参照，预警为采样两端内缩 0.10 D。	5500 K, 1/20 s, Microphen 20°C 7 min(curve 2). The three source plots have similarly shaped center curves, sampled separately. Middle-gray reference is −2.45 relative exposure; limits are inset 0.10 D from both ends.
+5500 K，1/20 秒，Microphen 20°C 9 分钟（曲线 2）。三份原图的中线形状近同，各自采样；相对曝光轴 −2.45 作中灰参照，预警为采样两端内缩 0.10 D。	5500 K, 1/20 s, Microphen 20°C 9 min(curve 2). The three source plots have similarly shaped center curves, sampled separately. Middle-gray reference is −2.45 relative exposure; limits are inset 0.10 D from both ends.
+AP 44 / E-6；中灰参考D=1.0；界限取图内两端各收0.10D	AP 44 / E-6; middle-gray reference D=1.0; limits inset 0.10 D from both plotted ends
+AP 70 / C-41；中灰估算：趾部+0.10D处上移3⅓档；界限取图内两端各收0.10D	AP 70 / C-41; middle gray estimated 3⅓ stops above toe + 0.10 D; limits inset 0.10 D from both plotted ends
+Agfapan 原厂密度曲线；图中未指明显影液；中灰估算：趾部+0.10D处上移3⅓档；界限取图内两端各收0.10D	Agfapan manufacturer density curve; developer unspecified; middle gray estimated 3⅓ stops above toe + 0.10 D; limits inset 0.10 D from both plotted ends
+C-41，日光，Status M 绿层，按图示 Log H Ref 对齐中灰，第10页。	C-41, daylight, Status M green layer, middle gray aligned with the plotted log H reference, p. 10.
+C-41，日光，Status M 绿层，按图示 Log H Ref 对齐中灰，第11页。	C-41, daylight, Status M green layer, middle gray aligned with the plotted log H reference, p. 11.
+C-41，日光，Status M 绿层，按图示 Log H Ref 对齐中灰，第3页。	C-41, daylight, Status M green layer, middle gray aligned with the plotted log H reference, p. 3.
+C-41，日光，Status M 绿层，按图示 Log H Ref 对齐中灰，第4页。	C-41, daylight, Status M green layer, middle gray aligned with the plotted log H reference, p. 4.
+C-41，日光，Status M 绿层，按图示 Log H Ref 对齐中灰，第5页。	C-41, daylight, Status M green layer, middle gray aligned with the plotted log H reference, p. 5.
+C-41，日光，Status M 绿层，按图示 Log H Ref 对齐中灰，第8页。	C-41, daylight, Status M green layer, middle gray aligned with the plotted log H reference, p. 8.
+C-41，日光，Status M 绿层，按图示 Log H Ref 对齐中灰，第9页。	C-41, daylight, Status M green layer, middle gray aligned with the plotted log H reference, p. 9.
+CN-16 / C-41；中灰假设 H=10/ISO lx·s；界限取图内两端各收0.10D，亮端非实测饱和	CN-16 / C-41; middle gray assumed at  H=10/ISO lx·s; limits inset 0.10 D from both plotted ends; bright limit is not measured saturation
+D-76 原液 / γ 0.7；中灰估算：趾部+0.10D处上移3⅓档；界限取图内两端各收0.10D	D-76 stock solution / γ 0.7; middle gray estimated 3⅓ stops above toe + 0.10 D; limits inset 0.10 D from both plotted ends
+D-76，小罐 20°C 7.5 分钟，漫射视觉密度，中灰近似取 H=14/EI lx·s，第8页。	D-76, small tank 20°C 7.5 min, diffuse visual density, middle gray approximated at  H=14/EI lx·s, p. 8.
+D-76，小罐 20°C 8 分钟，漫射视觉密度，中灰近似取 H=14/EI lx·s，第8页。	D-76, small tank 20°C 8 min, diffuse visual density, middle gray approximated at  H=14/EI lx·s, p. 8.
+D96；中灰估算：趾部+0.10D处上移3⅓档；界限取图内两端各收0.10D	D96; middle gray estimated 3⅓ stops above toe + 0.10 D; limits inset 0.10 D from both plotted ends
+DD-X 1+4，20°C，9 分钟；EI 3200；中灰参考 log H 2.0，边界按图示两端内缩 0.10 D。	DD-X 1+4, 20°C, 9 min; EI 3200; middle-gray reference  log H 2.0, limits inset 0.10 D from both plotted ends.
+E-6，日光，Status A；以绿层密度 1.0 作为中灰近似，预警取曲线两端内缩 0.10 D。	E-6, daylight, Status A; middle gray approximated at green-layer D = 1.0, limits inset 0.10 D from both curve endpoints.
+E-6，灯光，Status A；以绿层密度 1.0 作为中灰近似，预警取曲线两端内缩 0.10 D。	E-6, tungsten, Status A; middle gray approximated at green-layer D = 1.0, limits inset 0.10 D from both curve endpoints.
+ECN-2，3200K，Status M 绿层，使用图上 Camera Stops，第3页。	ECN-2, 3200K, Status M green layer, using plotted camera stops, p. 3.
+ECN-2，3200K，Status M 绿层，使用图上 Camera Stops，第4页。	ECN-2, 3200K, Status M green layer, using plotted camera stops, p. 4.
+ECN-2，5500K，Status M 绿层，使用图上 Camera Stops，第3页。	ECN-2, 5500K, Status M green layer, using plotted camera stops, p. 3.
+H-1-5206 · 5500 K / 1⁄50 s / ECN-2 / Status M。图示 Camera Stops 中灰；预警取图内绿层两端各内收 0.10 D。	H-1-5206 · 5500 K / 1⁄50 s / ECN-2 / Status M. middle gray from the plotted camera stops; limits inset 0.10 D from both green-layer endpoints.
+ID-11 原液，20°C，10 分钟；中灰参考 log H 2.2，边界按图示两端内缩 0.10 D。	ID-11 stock solution, 20°C, 10 min; middle-gray reference  log H 2.2, limits inset 0.10 D from both plotted ends.
+ID-11 原液，20°C，8 分 30 秒；中灰参考 log H 2.5，边界按图示两端内缩 0.10 D。	ID-11 stock solution, 20°C, 8 min 30 s; middle-gray reference  log H 2.5, limits inset 0.10 D from both plotted ends.
+ID-11 原液，24°C，8 分钟；中灰参考 log H 2.2，边界按图示两端内缩 0.10 D。	ID-11 stock solution, 24°C, 8 min; middle-gray reference  log H 2.2, limits inset 0.10 D from both plotted ends.
+ILFORD HP5 PLUS · ILFOTEC HC 1+31，20°C，6 分 30 秒。	ILFORD HP5 PLUS · ILFOTEC HC 1+31, 20°C, 6 min 30 s.
+ILFOTEC HC (1+31), 4 min at 20 C, intermittent agitation；中灰估算：趾部+0.10D处上移3⅓档；界限取图内两端各收0.10D，亮端非实测饱和	ILFOTEC HC (1+31), 4 min at 20 C, intermittent agitation; middle gray estimated 3⅓ stops above toe + 0.10 D; limits inset 0.10 D from both plotted ends; bright limit is not measured saturation
+ILFOTEC HC 1+31，20°C，8 分钟；中灰参考 log H 2.25，边界按图示两端内缩 0.10 D。	ILFOTEC HC 1+31, 20°C, 8 min; middle-gray reference  log H 2.25, limits inset 0.10 D from both plotted ends.
+K-14，日光，Status A；E-88 与 E-55 在此感光度刊载相同形状的图线，分别按各自页图采样。以绿层密度 1.0 作为中灰近似，预警取曲线两端内缩 0.10 D。	K-14, daylight, Status A; E-88 and E-55 show the same curve shape at this speed, each sampled from its own figure. middle gray approximated at green-layer D = 1.0, limits inset 0.10 D from both curve endpoints.
+K-14，日光，Status A；以绿层密度 1.0 作为中灰近似，预警取曲线两端内缩 0.10 D。	K-14, daylight, Status A; middle gray approximated at green-layer D = 1.0, limits inset 0.10 D from both curve endpoints.
+Kodak E-4000 · 日光 / E-6 / Status A，绿层近似。	Kodak E-4000 · daylight / E-6 / Status A, green-layer approximation.
+Kodak E-4050 · 日光 / C-41 / Status M，绿层近似。	Kodak E-4050 · daylight / C-41 / Status M, green-layer approximation.
+RGB均值	RGB mean
+日光 / C-41 / Status M；中灰估算：趾部+0.10D处上移3⅓档；界限取图内两端各收0.10D	daylight / C-41 / Status M; middle gray estimated 3⅓ stops above toe + 0.10 D; limits inset 0.10 D from both plotted ends
+日光 5500K，Microphen 20°C，7 分钟；原图为相对曝光，中灰以密度 0.85 近似对齐，预警为端点内缩 0.10 D。	daylight 5500K, Microphen 20°C, 7 min; relative exposure in source plot, middle gray at approximately D = 0.85, limits inset 0.10 D from the endpoints.
+日光 5500K，Microphen 20°C，9 分钟；原图为相对曝光，中灰以密度 0.85 近似对齐，预警为端点内缩 0.10 D。	daylight 5500K, Microphen 20°C, 9 min; relative exposure in source plot, middle gray at approximately D = 0.85, limits inset 0.10 D from the endpoints.
+日光 5500K，R-100 黑白反转工艺；原图为相对曝光，中灰以密度 1.0 近似对齐，预警为端点内缩 0.10 D。	daylight 5500K, R-100 B&W reversal process; relative exposure in source plot, middle gray at approximately D = 1.0, limits inset 0.10 D from the endpoints.
+日光 5500K，Retro Special Developer 20°C，5 分钟；原图为相对曝光，中灰以密度 0.85 近似对齐，预警为端点内缩 0.10 D。	daylight 5500K, Retro Special Developer 20°C, 5 min; relative exposure in source plot, middle gray at approximately D = 0.85, limits inset 0.10 D from the endpoints.
+日光 · ID-11 原液，20°C，8 分钟，G 0.62；中灰参考 log H 2.6，边界按图示两端内缩 0.10 D。	daylight · ID-11 stock solution, 20°C, 8 min, G 0.62; middle-gray reference  log H 2.6, limits inset 0.10 D from both plotted ends.
+日光，1/125 秒，C-41，Status M 绿层；中灰参考 log H -1.1，边界按图示两端内缩 0.10 D。	daylight, 1/125 s, C-41, Status M green layer; middle-gray reference  log H -1.1, limits inset 0.10 D from both plotted ends.
+日光，1/125 秒，C-41，Status M 绿层；中灰参考 log H -1.35，边界按图示两端内缩 0.10 D。	daylight, 1/125 s, C-41, Status M green layer; middle-gray reference  log H -1.35, limits inset 0.10 D from both plotted ends.
+日光，1/125 秒，CN-16，Status M 绿层；中灰参考 log H -1.0，边界按图示两端内缩 0.10 D。	daylight, 1/125 s, CN-16, Status M green layer; middle-gray reference  log H -1.0, limits inset 0.10 D from both plotted ends.
+日光，1/125 秒，CN-16，Status M 绿层；中灰参考 log H -1.1，边界按图示两端内缩 0.10 D。	daylight, 1/125 s, CN-16, Status M green layer; middle-gray reference  log H -1.1, limits inset 0.10 D from both plotted ends.
+日光，1/125 秒，CN-16，Status M 绿层；中灰参考 log H -1.4，边界按图示两端内缩 0.10 D。	daylight, 1/125 s, CN-16, Status M green layer; middle-gray reference  log H -1.4, limits inset 0.10 D from both plotted ends.
+日光，1/125 秒，CN-16，Status M 绿层；中灰参考 log H -1.7，边界按图示两端内缩 0.10 D。	daylight, 1/125 s, CN-16, Status M green layer; middle-gray reference  log H -1.7, limits inset 0.10 D from both plotted ends.
+日光，E-6，Status A 绿层；中灰参考 log H -0.48，边界按图示两端内缩 0.10 D。	daylight, E-6, Status A green layer; middle-gray reference  log H -0.48, limits inset 0.10 D from both plotted ends.
+日光，E-6，Status A 绿层；中灰参考 log H -0.65，边界按图示两端内缩 0.10 D。	daylight, E-6, Status A green layer; middle-gray reference  log H -0.65, limits inset 0.10 D from both plotted ends.
+日光，E-6，Status A 绿层；中灰参考 log H -1.0，边界按图示两端内缩 0.10 D。	daylight, E-6, Status A green layer; middle-gray reference  log H -1.0, limits inset 0.10 D from both plotted ends.
+柯达	Kodak
+绿层	green layer
+视觉密度	visual density
+页片，D-76，大罐 20°C 8 分钟，漫射视觉密度，中灰近似取 H=14/EI lx·s，第9页。	sheet film, D-76, large tank 20°C 8 min, diffuse visual density, middle gray approximated at  H=14/EI lx·s, p. 9.
+黑白染料型负片，C-41；中灰参考 log H 2.0，边界按图示两端内缩 0.10 D。	chromogenic B&W negative, C-41; middle-gray reference  log H 2.0, limits inset 0.10 D from both plotted ends.
+第 3 页图 8，同版曲线见 mini 与 WIDE 两份手册。5500 K，1/100 s，25°C，曝光后 24 小时测量。取绿色反射密度；中灰取片白反射率的 18%，预警取两端各内缩 0.10 D。	Fig. 8, p. 3, shared by the mini and WIDE sheets. Green reflection density measured after 24 h at 5500 K, 1/100 s and 25°C. Middle gray is 18% of paper white. Warning limits are inset 0.10 D at both ends.
+ISO 来自 SQ1 厂家手册。未取得 SQUARE 特性图，借用 instax mini 的曲线与预警范围作通用近似。	ISO from the SQ1 manual. No SQUARE density plot was located. The instax mini curve and limits serve as an approximation.
+ISO 据 Impossible 原包装。未取得本型号的密度图；预览使用通用近似的反射正片模型，预警暂取中灰上下各两档。过期胶片应按实物试拍。	ISO from the original Impossible packaging. No stock-specific density plot was located. Preview uses an approximate reflection-print model with assumed warning limits of ±2 stops. Test expired film before use.

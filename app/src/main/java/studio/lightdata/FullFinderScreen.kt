@@ -9,7 +9,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,7 +93,7 @@ private fun GlassPanel(brightness: Int, content: @Composable () -> Unit) {
 @Composable
 private fun GlassButton(label:String, action:()->Unit) {
     Box(Modifier.background(Color.Black.copy(alpha=.76f)).clickable(onClick=action).padding(horizontal=9.dp,vertical=7.dp)) {
-        BasicText(label,style=TextStyle(fontSize=12.sp,color=Color.White))
+        InstrumentText(label,style=TextStyle(fontSize=12.sp,color=Color.White))
     }
 }
 
@@ -146,14 +145,14 @@ internal fun FullFinderScreen(
         }
         fun use(next:GlassLayout?) { current = next; controller.use(landscape, next) }
         fun save() {
-            val input = EditText(a).apply { isSingleLine = true; hint = "预设名称" }
-            android.app.AlertDialog.Builder(a).setTitle("保存当前" + if(landscape) "横屏布局" else "竖屏布局")
+            val input = EditText(a).apply { isSingleLine = true; hint = tr("预设名称") }
+            MeterDialog(a).setTitle("保存当前" + if(landscape) "横屏布局" else "竖屏布局")
                 .setView(input).setNegativeButton("取消",null).setPositiveButton("保存") { _,_ ->
                     val name = input.text.toString().trim()
                     if (name.isEmpty()) a.notifyUser("请输入预设名称") else {
-                        fun persist() { controller.save(landscape,name,layout); a.notifyUser("已保存布局「$name」") }
-                        if (name in controller.names(landscape)) android.app.AlertDialog.Builder(a)
-                            .setMessage("覆盖已有布局「$name」？").setNegativeButton("取消",null)
+                        fun persist() { controller.save(landscape,name,layout); a.notifyUser(tr("已保存布局「%s」").format(name)) }
+                        if (name in controller.names(landscape)) MeterDialog(a)
+                            .setMessage(tr("覆盖已有布局「%s」？").format(name)).setNegativeButton("取消",null)
                             .setPositiveButton("覆盖") { _,_ -> persist() }.show()
                         else persist()
                     }

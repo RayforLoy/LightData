@@ -18,6 +18,7 @@ internal class GlassCompositor {
     private val images = IntArray(3)
     private var sourceW = 0
     private var sourceH = 0
+    private var hasBlurTargets = false
     private val program: Int
     private val position: Int
     private val step: Int
@@ -47,7 +48,9 @@ internal class GlassCompositor {
             uniform vec4 frame;
             vec2 reflectUV(vec2 p) { return 1. - abs(mod(p, 2.) - 1.); }
             void main() {
-                if (composite != 0) {
+                if (composite == 2) {
+                    gl_FragColor = texture2D(scene, uv);
+                } else if (composite == 1) {
                     vec2 p = (uv - frame.xy) / frame.zw;
                     if (all(greaterThanEqual(p, vec2(0.))) && all(lessThanEqual(p, vec2(1.))))
                         gl_FragColor = texture2D(scene, p);
@@ -82,14 +85,14 @@ internal class GlassCompositor {
         glGenTextures(images.size, images, 0)
     }
 
-    fun draw(frame: GlassFrame, w: Int, h: Int, quad: FloatBuffer, scene: () -> Unit) {
-        val sw = max(1, (frame.width * w).roundToInt())
-        val sh = max(1, (frame.height * h).roundToInt())
+    fun draw(frame: GlassFrame?, w: Int, h: Int, quad: FloatBuffer,
+             sw: Int = max(1, ((frame?.width ?: 1f) * w).roundToInt()),
+             sh: Int = max(1, ((frame?.height ?: 1f) * h).roundToInt()), scene: () -> Unit) {
         val bw = max(1, sw / 2)
         val bh = max(1, sh / 2)
-        if (sw != sourceW || sh != sourceH) {
+        if (sw != sourceW || sh != sourceH || (frame != null && !hasBlurTargets)) {
             glActiveTexture(GL_TEXTURE0)
-            for (i in images.indices) {
+            for (i in 0 until (if (frame == null) 1 else images.size)) {
                 glBindTexture(GL_TEXTURE_2D, images[i])
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
@@ -101,6 +104,7 @@ internal class GlassCompositor {
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, images[i], 0)
                 check(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
             }
+            hasBlurTargets = frame != null
             sourceW = sw
             sourceH = sh
         }
@@ -111,6 +115,16 @@ internal class GlassCompositor {
         glUseProgram(program)
         glEnableVertexAttribArray(position)
         glVertexAttribPointer(position, 2, GL_FLOAT, false, 0, quad)
+        if (frame == null) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0)
+            glViewport(0, 0, w, h)
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, images[0])
+            glUniform1i(compose, 2)
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+            glDisableVertexAttribArray(position)
+            return
+        }
         glUniform1i(compose, 0)
         // Clear the previous composite's texture on unit 1 to avoid rendering to a bound input.
         glActiveTexture(GL_TEXTURE1)

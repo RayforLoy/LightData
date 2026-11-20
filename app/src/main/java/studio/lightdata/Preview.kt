@@ -31,9 +31,9 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
     private var compositor: GlassCompositor? = null
     private var surfaceW = 1
     private var surfaceH = 1
-    private var scale = 1.0
-    private var bufferWidth = 0
-    private var bufferHeight = 0
+    @Volatile private var scale = 1.0
+    @Volatile internal var renderedSceneWidth = 0
+        private set
     private val textures = IntArray(6)
     private var lastLive: LiveCapture? = null
     private var reported: Any? = null
@@ -59,19 +59,15 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
         renderMode = RENDERMODE_WHEN_DIRTY
     }
 
-    fun setGlassFrame(left: Float, top: Float, right: Float, bottom: Float) {
-        if (right <= left || bottom <= top) return
-        val next = GlassFrame(left, top, right, bottom)
+    internal fun setGlassFrame(next: GlassFrame?) {
         if (glassFrame == next) return
         glassFrame = next
-        resizeBuffer()
         requestRender()
     }
 
     fun show(next: Look, resolution: Double) {
         look = next
         scale = resolution
-        resizeBuffer()
         requestRender()
     }
 
@@ -80,28 +76,6 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
         if (previous.live == null) return
         look = previous.copy(live = live, delta = live.ev - exposureEv)
         requestRender()
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        resizeBuffer()
-    }
-
-    private fun resizeBuffer() {
-        val current = look ?: return
-        val fw = current.live?.width ?: current.frame.w
-        val fh = current.live?.height ?: current.frame.h
-        if (width == 0 || height == 0) return
-        val glass = glassFrame
-        val gateWidth = glass?.width?.toDouble() ?: 1.0
-        val gateHeight = glass?.height?.toDouble() ?: 1.0
-        val factor = minOf(1.0, width*gateWidth/fw, height*gateHeight/fh) * scale
-        val w = (fw * factor / gateWidth).roundToInt().coerceIn(1, width)
-        val h = (fh * factor / gateHeight).roundToInt().coerceIn(1, height)
-        if (w == bufferWidth && h == bufferHeight) return
-        bufferWidth = w
-        bufferHeight = h
-        holder.setFixedSize(w, h)
     }
 
     override fun onSurfaceCreated(g: GL10?, config: EGLConfig?) {
@@ -260,11 +234,23 @@ class Preview(ctx: Context) : GLSurfaceView(ctx), GLSurfaceView.Renderer {
     override fun onDrawFrame(g: GL10?) {
         val l = look ?: return
         val frame = glassFrame
-        if (frame == null) drawLook(l)
-        else {
+        val sourceW = l.live?.width ?: l.frame.w
+        val sourceH = l.live?.height ?: l.frame.h
+        val gateW = surfaceW * (frame?.width ?: 1f)
+        val gateH = surfaceH * (frame?.height ?: 1f)
+        val factor = minOf(1.0, gateW.toDouble()/sourceW, gateH.toDouble()/sourceH) * scale
+        val sceneW = (sourceW*factor).roundToInt().coerceAtLeast(1)
+        val sceneH = (sourceH*factor).roundToInt().coerceAtLeast(1)
+        // Keep the native window layout-sized across rotation. Rendering resolution applies
+        // only to the offscreen image; the final pass always spans the current drawable.
+        if (frame == null && sceneW == surfaceW && sceneH == surfaceH) {
+            glViewport(0, 0, surfaceW, surfaceH)
+            drawLook(l)
+        } else {
             val glass = compositor ?: GlassCompositor().also { compositor = it }
-            glass.draw(frame, surfaceW, surfaceH, quad) { drawLook(l) }
+            glass.draw(frame, surfaceW, surfaceH, quad, sceneW, sceneH) { drawLook(l) }
         }
+        renderedSceneWidth = sceneW
         renderedLive = l.live
         val source = l.live ?: l.frame
         if (source !== reported) {

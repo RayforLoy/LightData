@@ -5,6 +5,7 @@ import kotlin.math.*
 /** The same Camera2 image and crop are used by the shader, full histogram and frozen spots. */
 class LiveCapture(val image: Rig.Packet, val ev: Double, val id: String, val timestamp: Long,
                   val turn: Int, source: Field, target: Field, val right: Double = 0.0, val up: Double = 0.0) {
+    internal var trackingPose: GatePose? = null
     private val uprightWidth = if (turn % 180 == 0) image.w else image.h
     private val uprightHeight = if (turn % 180 == 0) image.h else image.w
     private val gateWidth = uprightWidth * target.x / source.x
@@ -59,6 +60,6 @@ class LiveCapture(val image: Rig.Packet, val ev: Double, val id: String, val tim
             val y = yAt((row+.5)/height)
             for (col in xs.indices) colors[row*width+col] = pixel(xs[col],y)
         }
-        return Frame(width,height,colors,ev,id,timestamp,image.encoding,image.sensorReading,faces)
+        return Frame(width,height,colors,ev,id,timestamp,image.encoding,image.sensorReading,faces,image.whitePoint)
     }
 }

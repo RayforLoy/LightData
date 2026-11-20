@@ -2,7 +2,6 @@ package studio.lightdata
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.*
@@ -16,7 +15,7 @@ import kotlin.math.*
 
 @Composable
 private fun TextLine(text:String,color:Color=Color.White) {
-    BasicText(text,style=TextStyle(color=color,fontSize=14.sp))
+    InstrumentText(text,style=TextStyle(color=color,fontSize=14.sp))
 }
 @Composable
 private fun Choice(text:String, onClick:()->Unit) {
@@ -24,10 +23,22 @@ private fun Choice(text:String, onClick:()->Unit) {
 }
 
 @Composable
-internal fun MoreToolsDialog(a:MainActivity) {
+internal fun MoreToolsDialog(a:MainActivity, layout: ToolLayout) {
     val page=a.toolsPage
     fun back() {
-        a.toolsPage=when(page) { "ground","flash" -> "lab"; "lab","shots","parallax","reports","optics" -> "more"; else -> "" }
+        val tool = when (page) {
+            "lab" -> FinderTool.LAB
+            "shots" -> FinderTool.SHOTS
+            "parallax" -> FinderTool.PARALLAX
+            "reports" -> FinderTool.REPORTS
+            "optics" -> FinderTool.OPTICS
+            else -> null
+        }
+        a.toolsPage = when {
+            page == "ground" || page == "flash" -> "lab"
+            tool in layout.more -> "more"
+            else -> ""
+        }
     }
     Dialog(onDismissRequest={ back() },properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Column(Modifier.fillMaxSize().background(Color(0xff151617)).windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {

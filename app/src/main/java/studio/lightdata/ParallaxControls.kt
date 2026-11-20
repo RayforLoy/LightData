@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,7 +32,7 @@ private fun distanceLabel(mm: Double) = when {
 
 @Composable
 private fun ParallaxLabel(value: String, color: Color = Color.White, size: Int = 14, modifier: Modifier = Modifier) {
-    BasicText(value, modifier, style = TextStyle(color = color, fontSize = size.sp))
+    InstrumentText(value, modifier, style = TextStyle(color = color, fontSize = size.sp))
 }
 
 @Composable
@@ -132,7 +131,7 @@ internal fun ParallaxDistanceWheel(
     val current by rememberUpdatedState(selected)
     fun select(index: Int): Boolean = a.updateParallax(a.parallax.copy(distanceMm = options[index.coerceIn(options.indices)]))
     BoxWithConstraints(modifier.background(background).semantics {
-        contentDescription = "被摄物至焦平面距离 ${distanceLabel(config.distanceMm)}"
+        contentDescription = tr("被摄物至焦平面距离 ${distanceLabel(config.distanceMm)}")
         progressBarRangeInfo = ProgressBarRangeInfo(selected.toFloat(), 0f..options.lastIndex.toFloat(), (options.size-2).coerceAtLeast(0))
         setProgress { select(it.roundToInt()) }
     }, contentAlignment = Alignment.Center) {
@@ -157,10 +156,10 @@ internal fun ParallaxDistanceWheel(
         @Composable fun cell(offset: Int, m: Modifier) {
             val idx = selected + offset
             val value = options.getOrNull(idx)
-            Box(m.combinedClickable(onLongClickLabel = "输入物距", onLongClick = { a.editSubjectDistance() }, onClick = { if (value != null) select(idx) }),
+            Box(m.combinedClickable(onLongClickLabel = tr("输入物距"), onLongClick = { a.editSubjectDistance() }, onClick = { if (value != null) select(idx) }),
                 contentAlignment = Alignment.Center) {
                 if (value != null) {
-                    BasicText(if (vertical && value.isFinite()) distanceLabel(value).replace(" ", "\n") else distanceLabel(value),
+                    InstrumentText(if (vertical && value.isFinite()) distanceLabel(value).replace(" ", "\n") else distanceLabel(value),
                         style = TextStyle(color = if (offset == 0) amber else foreground.copy(alpha = .75f),
                             fontSize = (if (vertical) 11 else 13).sp, fontFamily = FontFamily.Monospace,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center))

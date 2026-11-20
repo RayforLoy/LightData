@@ -120,7 +120,7 @@ class LutRenderTest {
                 val stop = android.os.SystemClock.elapsedRealtime()+6500
                 while (android.os.SystemClock.elapsedRealtime()<stop) {
                     Thread.sleep(100)
-                    if (preview.holder.surfaceFrame.width()!=width || !preview.holder.surface.isValid) continue
+                    if (preview.renderedSceneWidth != width || !preview.holder.surface.isValid) continue
                     val bmp = Bitmap.createBitmap(width, width*3/4, Bitmap.Config.ARGB_8888)
                     var code = PixelCopy.ERROR_UNKNOWN
                     val done=CountDownLatch(1)
@@ -130,7 +130,7 @@ class LutRenderTest {
                     if (check(rgb)) return
                     if (stripe && (0 until 12).any { check(bmp.getPixel(it,bmp.height/2)) }) return
                 }
-                fail("Expected surface width ${width}, actual ${preview.holder.surfaceFrame}, last RGB ${Integer.toHexString(rgb)}")
+                fail("Expected scene width ${width}, actual ${preview.renderedSceneWidth}, surface ${preview.holder.surfaceFrame}, last RGB ${Integer.toHexString(rgb)}")
             }
             waitFor(40) { abs((it and 255)-120)<=2 }
             look=look.copy(atlas=atlas)

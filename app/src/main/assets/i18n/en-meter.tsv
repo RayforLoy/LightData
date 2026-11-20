@@ -1,0 +1,455 @@
+一张闪光	One flash exposure
+上下限为预览用估算值	Limits estimated for preview
+上次读数	Last reading
+上行双音	Rising tone
+下行双音	Falling tone
+不支持的预设格式版本	Unsupported preset format version
+不能含控制字符或首尾空白	Use no control characters or leading/trailing spaces
+两次读数之差可代替皮腔与镜前滤镜补偿	The difference replaces bellows and filter compensation
+个	items
+个字符	characters
+个预设	presets
+中灰以上	Above middle gray
+中灰以上和以下均须至少保留	Reserve at least this much latitude above and below middle gray
+九级阶梯卡	Nine-step chart
+也可对静止场景估测	A stationary scene can also be used
+亮度模拟	Brightness simulation
+人脸曝光补偿	Face exposure compensation
+人脸目标分区	Face target zone
+人脸重点测光	Face-priority metering
+估测	Estimate
+使用亮度模拟	Use brightness simulation
+使用实测	Use measured loss
+例如	Example
+保存并使用	Save and use
+保存并选用	Save and select
+保存当前构图	Save current framing
+保存画幅预设	Save format preset
+保持光照和校准光圈稳定	Keep the light and calibration aperture constant
+保留重叠	Keep overlap
+信号过弱或过强时会等待	Waiting for a usable signal
+俯仰	Pitch
+俯拍水平泡	Overhead bubble level
+倍	×
+倒易律	Reciprocity
+倒易补偿	Reciprocity correction
+值	Value
+像素	Pixels
+先用主界面点测光记录该表面	First spot-meter this surface in the finder
+光圈	Aperture
+光损补偿	Light loss
+光损补偿来源	Light loss source
+光照和所选物点	Lighting and selected reference
+光谱近似	Spectral approximation
+全幅	Full frame
+全画幅等效焦距	35 mm equivalent focal length
+全画面测光	Whole-frame metering
+关闭	Off
+关闭当前叠影	Hide overlay
+关闭拼接诊断记录	Stop panorama logging
+关闭滤镜补偿	Disable filter compensation
+内	within
+再将大画幅镜头对焦到无限远	Then focus the large-format lens at infinity
+再打开实验室	Then open the lab
+准备	Ready
+准备中	Preparing
+分层色彩预览	Layered color preview
+删除测光点	Remove spot
+加载失败	Load failed
+区	zone
+单次	Single
+厂家未给补偿值	No manufacturer correction specified
+原始配置	Original configuration
+参考	Reference
+双击恢复自动	Double-tap to reset
+反射式闪光估测	Reflected flash estimate
+反射式闪光测光	Reflected flash metering
+取下手机	Remove the phone
+取景	Finder
+取景裁框	Framing gate
+取景视差补偿	Finder parallax correction
+取消	Cancel
+取消比对	Cancel comparison
+取消测量	Cancel measurement
+叠影	Overlay
+可使用分数	Fractions accepted
+可在设置中使用灰卡或阶梯卡校准	Calibrate using a gray card or step chart in Settings
+可多选	Select multiple
+可横向拖动与双指缩放	Drag to pan or pinch to zoom
+可补光或放慢转动	Add light or rotate more slowly
+可见光近似配色	Visible-light color approximation
+合成	Synthesized
+同步	Sync
+同步引闪	Flash sync
+同点光损实测	Measure loss at the same spot
+名称	Name
+含光损	Loss
+含实测	Measured
+启用相机	Enable camera
+回取景器测同一物点	Meter the same spot in the finder
+固定手机	Hold the phone steady
+在主界面确认构图后固定手机	Frame your subject and secure the phone
+在均匀稳定的光照下让灰卡充满镜头	Fill the frame with a uniformly lit gray card
+在户外选一块均匀受光的远处表面	Choose an evenly lit distant surface outdoors
+场景	Scene
+均匀灰卡	Uniform gray card
+基准	Baseline
+声音	Sound
+处理中	Processing
+复核环境光	Check ambient light
+大画幅镜头校准时的光圈	Large-format aperture during calibration
+如	e.g.
+完成	Done
+实拍	Capture
+实拍光圈下测得	Measured at taking aperture
+实时预览分辨率	Live preview resolution
+实测时将大画幅镜头收至拍摄光圈	Stop the large-format lens down to the taking aperture
+实际贴屏测量时的大画幅光圈	Large-format aperture for ground-glass measurement
+实验室	Lab
+室外参考	Outdoor reference
+室外参考点	Outdoor reference spot
+宽度	Width
+密度	Density
+密度曲线	Density curve
+对准传感器中央	Align with the sensor center
+对准同时有阴影和亮部的静止场景	Aim at a stationary scene containing shadows and highlights
+对准实景	Aim at the subject
+对数	Logarithmic
+对焦屏点测光	Ground-glass spot metering
+导入	Import
+导入音频	Import audio
+导出	Export
+导出失败	Export failed
+导出拼接诊断	Export panorama log
+将九级灰阶从暗至亮横向排列	Arrange the nine steps horizontally from dark to light
+将同一手机镜头贴在毛玻璃对应位置	Place the same phone lens against the corresponding ground-glass spot
+将白圈缓慢移向黄菱形	Move the white circle slowly toward the yellow diamond
+小尾巴	USB DAC
+小尾巴和兼容	USB DAC and compatible
+已保存	Saved
+已保存镜头	Saved lens
+已保留开头的连续记录	Initial recording segment retained
+已取消	Cancelled
+已完成	Complete
+已恢复	Restored
+已校准	Calibrated
+已读取	Read
+已锁定	Locked
+帧	frames
+应用	Apply
+应用后切换到	After applying, switch to
+应用后解锁	Unlock after applying
+应用实测值	Apply measured value
+开启拼接诊断记录	Start panorama logging
+开始后盖好冠布	Cover with the dark cloth after starting
+开始拼接	Start panorama
+开始采集	Start capture
+引闪	Trigger
+引闪失败	Trigger failed
+当前镜头尚未校准	This lens has not been calibrated
+录音	Recording
+录音来源	Recording source
+彩色	Color
+待校准	Calibration needed
+待确认中心	Confirm center
+必须是规范的小写	Must use canonical lowercase
+快门	Shutter
+快门速度	Shutter speed
+快门音	Shutter sound
+总动态范围	Total dynamic range
+总动态范围须在	Dynamic range must be within
+恢复	Restore
+恢复原测光	Restore original metering
+恢复胶片	Restore film
+或	or
+或输入	or enter
+截取一次快门并调整音量	Trimmed to a single shutter actuation and level-adjusted
+手动	Manual
+手机	Phone
+手机镜头	Phone lens
+手机镜头贴住毛玻璃上要放在中灰的位置	Place the phone lens against the ground-glass area to place at middle gray
+扫描采集	Scanning
+拍摄光圈	Taking aperture
+拍摄预览	Film preview
+拖动分界线	Drag dividers
+拼接中	Panorama active
+拼接成功率会下降	Panorama success rate may drop
+拼接构图	Panorama framing
+拼接诊断记录已达容量上限	Panorama log storage is full
+拼接配准算法	Panorama registration
+按	Place
+按箭头转回拼接中心	Follow the arrow back to center
+换算光圈	Equivalent aperture
+推荐	Recommended
+推荐使用实体灰卡或九级阶梯卡	Use a physical gray card or nine-step chart
+摄像头枚举失败	Camera enumeration failed
+支持	Supports
+放置	Place
+放置于	Place at
+数据来源网络	Online source
+数码	Digital
+文件中出现重复预设	Duplicate presets in file
+新增或更新	Added or updated
+新建命名预设	New named preset
+新建自定义预设	New custom preset
+新建预设	New preset
+无对应	No match
+无法同步	Sync unavailable
+无法换算闪光读数	Cannot convert flash reading
+无法测量	Cannot measure
+无法解码音频	Cannot decode audio
+无法识别预设文件格式	Unrecognized preset format
+无法读取音频	Cannot read audio
+无法还原真实红外反射	Cannot reproduce infrared reflectance
+无限远	Infinity
+日光中性校正	Daylight neutral correction
+显示实际预览	Show actual preview
+曝光	Exposure
+曝光与分区使用估算值	Exposure and zones are estimates
+曝光偏差	Exposure deviation
+曝光曲线	Exposure curve
+曝光直方图	Exposure histogram
+曝光补偿	Exposure compensation
+曝光请求失败	Exposure request failed
+更多	More
+更换毛玻璃	After changing the ground glass
+替代当前滤镜与皮腔补偿	Replaces current filter and bellows compensation
+最多支持	Maximum supported
+最多触发三次	Up to three flashes
+未发现	Not found
+未取得稳定有效的中心读数	No stable center reading
+未找到可访问的后置摄像头	No accessible rear camera
+未收到带实测元数据的同步画面	No synchronized frame with measured metadata
+未收到镜头人脸数据	No face metadata from lens
+未校准	Uncalibrated
+未检测到人脸	No face detected
+未知文件字段	Unknown file field
+未知预设字段	Unknown preset field
+未连接选定的	Selected device disconnected
+构图快照	Framing snapshots
+标称	Nominal
+校准	Calibration
+校准光圈	Calibration aperture
+校准完成	Calibration complete
+校准时	During calibration
+档	stops
+档数	Stops
+横持手机	Hold the phone horizontally
+横滚	Roll
+欠	Under
+正在加载	Loading
+正在等待相机	Waiting for camera
+正在读取	Reading
+正在连接	Connecting
+正在采集中心画面	Capturing center frame
+此次测量的大画幅拍摄光圈	Large-format taking aperture for this measurement
+每个镜头独立保存	Saved separately for each lens
+每组测两张环境光	Two ambient frames per set
+毛玻璃	Ground glass
+毛玻璃同点实测	Same-spot ground-glass measurement
+毛玻璃基准	Ground-glass reference
+毛玻璃实测	Ground-glass measurement
+毛玻璃读数高于物点	Ground-glass reading exceeds subject reading
+毫米	mm
+没有检测到足够的闪光增量	Insufficient flash signal detected
+测光	Metering
+测光可能不准确	Meter reading may be inaccurate
+测光确认音	Meter confirmation sound
+测环境光	Measure ambient
+添加测光点	Add spot
+滤镜与皮腔	Filter and bellows
+滤镜因子	Filter factor
+滤镜补偿	Filter compensation
+灰卡	Gray card
+点击测光点并点选参考表面	Tap Spot and select the reference surface
+点按画面添加动态测光点	Tap the finder to add a live spot
+点按画面添加测光点	Tap the finder to add a spot
+点标签放置分区	Tap a label to place its zone
+点选毛玻璃上测量的同一物点	Select the same spot measured on the ground glass
+烘焙版本	Baked version
+片夹	Film holder
+版本	Version
+物点	Subject spot
+环境光或构图变化过大	Ambient light or framing changed too much
+环境极暗	Extremely dark scene
+环境过暗	Low light
+现场	On location
+现场估测	Scene estimate
+用主界面点测光选取刚才在毛玻璃上测到的同一物点	In the finder, spot-meter the same area just measured on the ground glass
+用灰卡填满取景框	Fill the finder with a gray card
+电子水平尺	Electronic level
+画幅宽度	Format width
+画幅高度	Format height
+画面静止或冻结时恢复完整取景分辨率	Full finder resolution returns when steady or frozen
+画面饱和	Frame saturated
+留档	Reports
+留档快门音	Report shutter sound
+的有效距离	effective distance
+皮腔补偿	Bellows compensation
+盖上冠布所需时间	Time to cover with dark cloth
+目录	Catalog
+目录读取失败	Cannot read catalog
+目标画幅	Target format
+目标超出镜头视角	Target exceeds lens coverage
+直方图	Histogram
+直方图像素纵轴	Histogram count axis
+直方图平滑刷新	Smooth histogram
+直方图横轴中心	Histogram horizontal center
+相机未按请求曝光	Camera did not apply requested exposure
+相邻灰阶间隔	Step spacing
+确认中心	Confirm center
+确认音	Confirmation sound
+离垂直	From vertical
+秒	s
+秒以内的音频	seconds or shorter
+秒后重新测量	seconds before remeasuring
+秒回电再调整手机曝光	seconds to recycle before adjusting phone exposure
+第	No.
+等待取景画面	Waiting for preview
+等待姿态传感器	Waiting for orientation sensor
+等待测光	Waiting for metering
+等待相机	Waiting for camera
+等待镜头	Waiting for lens
+等待闪光灯回电	Waiting for flash to recycle
+等效	Equivalent
+等效曝光	Equivalent exposures
+类型	Type
+系统拒绝路由至选定	System refused to route to selected
+纵轴	Vertical axis
+线性	Linear
+组	sets
+组件比例	Panel proportions
+结果已包含皮腔伸长造成的光损失	Includes light loss from bellows extension
+结果按胶片	Results use film
+继续取景	Continue
+编辑	Edit
+编辑自定义预设	Edit custom preset
+网	Web
+肤色自动提亮	Automatic skin-tone lift
+胶片	Film
+脉冲未落在全画幅曝光窗口	Pulse outside full-frame exposure window
+自动	Auto
+自动选择	Auto select
+自定义	Custom
+自定义数码	Custom digital
+自定义画幅	Custom format
+自定义画幅单位	Custom format units
+自定义胶片	Custom film
+自定义预设	Custom presets
+自定义预设已导出	Custom presets exported
+至	to
+色彩映射	Color mapping
+色彩模拟	Color simulation
+英寸	inches
+被摄物至焦平面的距离	Subject to film-plane distance
+解锁	Unlock
+解锁并设置	Unlock and set
+触发并测量	Trigger and meter
+触发时间无效	Invalid trigger time
+许可	License
+设置	Settings
+设置闪光灯手动输出	Set manual flash power
+请先完成无限远校准	Calibrate at infinity first
+请先开启取景并退出拼接或镜头校准	Start the finder and exit panorama or lens calibration first
+请先开启记录并进行拼接	Enable logging and scan a panorama first
+请先退出拼接或校准	Exit panorama or calibration first
+请先退出点测光	Exit frozen spot metering first
+请先选择室外参考点	Choose an outdoor reference first
+请固定相机后重测	Hold the camera steady and remeasure
+请在实时取景中放置	Place the point in live view
+请安装可打开网页的浏览器	Install a browser to open this page
+请对准画面中心	Aim at the center
+请放慢转动	Rotate more slowly
+请核对校准光圈	Check calibration aperture
+请检查引闪连接及回电	Check trigger connection and flash recycling
+请检查毛玻璃亮度	Check ground-glass brightness
+请检查预设参数	Check preset parameters
+请移回原位	Move back to the original position
+请移回已拍区域	Return to the captured area
+请输入	Enter
+请输入至少	Enter at least
+请输入预设名称	Enter a preset name
+请选择	Select
+请选择有效取景区域内的物点	Select a point inside the valid frame
+请降低灯功率或拉远闪光灯	Reduce flash power or move it farther away
+读写快照失败	Snapshot file access failed
+贴合与遮光后重试	Check contact and shielding, then retry
+起始	Start
+超上限	Above limit
+超限	Limit exceeded
+距上限	Headroom
+跟随	Follow
+跟随测光读数	Follow meter reading
+跟随胶片	Follow film
+转动设备二次构图	Rotate to reframe
+输入	Input
+输入光圈	Enter aperture
+输入快门速度	Enter shutter speed
+输入曝光补偿	Enter exposure compensation
+输入滤镜因子	Enter filter factor
+输入画幅尺寸	Enter format dimensions
+输出写入失败	Output write failed
+输出已断开	Output disconnected
+输出路由或音频时钟不可用	Audio route or clock unavailable
+过	Over
+近处测点视差过大	Excessive parallax at nearby spots
+返回	Back
+返回主界面	Return to finder
+返回键可取消	Press Back to cancel
+这个名称已被使用	Name already in use
+连接	Connect
+连续	Continuous
+退出拼接	Exit panorama
+选中已接引闪器的音频输出	Select the audio output connected to the trigger
+选择	Choose
+选择主界面测光点	Choose finder spot
+选择曝光组合	Select exposure pair
+逐镜头校准	Per-lens calibration
+采集无限远毛玻璃参考	Capture infinity ground-glass reference
+采集期间请保持不动	Keep still during capture
+重复字段	Duplicate field
+重试	Retry
+重选物点	Reselect spot
+锁定至	Locked to
+镜头	Lens
+镜头不可用	Lens unavailable
+镜头不支持	Lens unsupported
+镜头主平面至胶片总距	Total lens principal-plane to film distance
+镜头实际焦距	Actual focal length
+镜头或应用状态已改变	Lens or app state changed
+镜头拒绝了此次手动曝光	Lens rejected manual exposure
+镜头最长快门不足	Longest available shutter is too short
+镜头校准	Lens calibration
+镜头系统或贴合方式后请重新校准	Recalibrate after changing the lens system or mounting
+镜头输入	Lens input
+长曝光	Long exposure
+闪光灯测光	Flash metering
+阶梯卡	Step chart
+需要字符串	String required
+需要数值	Number required
+需要相机权限才能取景	Camera permission is required for the finder
+音效设置	Sound settings
+音频延迟超过当前快门窗口	Audio latency exceeds the shutter window
+音频文件过大	Audio file too large
+音频时钟准备超时	Audio clock timed out
+音频缓冲中断	Audio buffer underrun
+音频脉冲的引闪适配器	Audio pulse flash adapter
+音频输出	Audio output
+须为布尔值	Must be a boolean
+须在	Must be within
+预览	Preview
+预览按钮	Preview button
+预设	Preset
+预设名称须为	Preset name must be
+预设字段不完整	Incomplete preset fields
+预设字段类型错误	Invalid preset field type
+预设数量过多	Too many presets
+预设文件不是有效	Invalid preset file
+预设文件字段不完整或有多余内容	Missing or unexpected preset fields
+预设文件操作失败	Preset file operation failed
+预设文件超过	Preset file exceeds
+预设文件过大	Preset file too large
+黑屏倒计时	Blackout countdown
+黑屏并测量	Black out and meter
+黑白	Monochrome
+试拍	Trial

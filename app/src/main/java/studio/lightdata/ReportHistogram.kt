@@ -29,7 +29,7 @@ internal fun drawReportHistogram(canvas: Canvas, area: RectF, report: MeterRepor
     fun x(ev: Double) = left + ((ev-report.histogramMinEv)/span).toFloat()*w
     paint.textSize = 22*unit
     paint.color = Color.WHITE
-    canvas.drawText("场景 EV100 · 像素" + (if(report.logCounts) "（对数）" else "（线性）") + "    /    胶片密度",left,top-14*unit,paint)
+    canvas.drawText(tr("场景 EV100 · 像素" + (if(report.logCounts) "（对数）" else "（线性）") + "    /    胶片密度"),left,top-14*unit,paint)
     canvas.save()
     canvas.clipRect(left,top,right,bottom)
     val peak = (bins.maxOrNull() ?: 1).coerceAtLeast(1)

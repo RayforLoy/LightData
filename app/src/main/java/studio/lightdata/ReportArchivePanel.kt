@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,7 +41,7 @@ import java.util.Date
 
 @Composable
 private fun ReportText(label: String, color: Color = Color.White, size: Int = 14, modifier: Modifier = Modifier) {
-    BasicText(label, modifier, style = TextStyle(color = color, fontSize = size.sp))
+    InstrumentText(label, modifier, style = TextStyle(color = color, fontSize = size.sp))
 }
 
 @Composable
@@ -91,7 +90,7 @@ private fun ReportImage(a: MainActivity, report: ReportItem, thumbnail: Boolean,
         }
     } else {
         val size = if (thumbnail) modifier else modifier.aspectRatio(bitmap.width.toFloat() / bitmap.height)
-        Image(bitmap.asImageBitmap(), contentDescription = if (thumbnail) null else "测光留档报告",
+        Image(bitmap.asImageBitmap(), contentDescription = if (thumbnail) null else tr("测光留档报告"),
             modifier = size, contentScale = if (thumbnail) ContentScale.Crop else ContentScale.Fit)
     }
 }

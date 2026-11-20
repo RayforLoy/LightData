@@ -17,6 +17,7 @@ private object FilmManuals {
 internal fun filmSourceUrl(documentId: String): String = FilmManuals.byId.getValue(documentId).link
 
 internal fun filmSourceLabel(documentId: String): String = when (FilmManuals.byId.getValue(documentId).kind) {
+    "process" -> "工艺试拍资料 ↗"
     "manual" -> "型号手册 ↗"
     "record" -> "手册出处 ↗"
     else -> "查找手册 ↗"

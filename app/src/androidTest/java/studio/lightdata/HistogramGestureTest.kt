@@ -26,7 +26,8 @@ class HistogramGestureTest {
     private val device: UiAutomation
         get() = instrumentation.uiAutomation
 
-    private val axisPattern = Regex("""(-?[\d.]+) 至 (-?[\d.]+) EV100，纵轴 ([\d.]+) 倍""")
+    private val axisPattern get() = Regex(tr("%.1f 至 %.1f EV100，纵轴 %.2f 倍")
+        .split(Regex("""%\.\df""")).joinToString("""(-?[\d.]+)""") { Regex.escape(it) })
 
     private data class Axis(
         val left: Double,
@@ -53,9 +54,9 @@ class HistogramGestureTest {
         val end = SystemClock.uptimeMillis() + 6000
         var observed = ""
         do {
-            node { it.text?.toString() == "继续取景" }
+            node { it.text?.toString() == tr("继续取景") }
                 ?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            val chart = node { it.contentDescription?.startsWith("场景 EV100 直方图") == true }
+            val chart = node { it.contentDescription?.toString() == tr("场景 EV100 直方图，可横向拖动与双指缩放，双击恢复自动") }
             if (chart != null) {
                 val state =
                     if (Build.VERSION.SDK_INT >= 30) chart.stateDescription

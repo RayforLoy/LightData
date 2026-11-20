@@ -1,6 +1,7 @@
 package studio.lightdata
 
-data class FilmRecord(val document: String, val brand: String, val iso: Int, val film: Film)
+data class FilmRecord(val document: String, val brand: String, val iso: Int, val film: Film,
+                      val experimentalEi: Boolean = false)
 
 private const val I = "ILFORD"
 private const val F = "Fujifilm"
@@ -212,7 +213,7 @@ private val referenceStocks =
 val filmRecords: List<FilmRecord> by lazy {
     val measured = loadDensityCurves()
     val names = measured.mapTo(HashSet()) { it.film.name }
-    measured + referenceStocks.filter { it.film.name !in names }
+    measured + referenceStocks.filter { it.film.name !in names } + instantStocks + experimentalReversalStocks
 }
 
 val films: List<Film> by lazy { filmRecords.map { it.film } }

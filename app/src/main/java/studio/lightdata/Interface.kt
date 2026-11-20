@@ -8,7 +8,6 @@ import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
@@ -51,7 +50,7 @@ private fun Label(
     bold: Boolean = false,
     monoType: Boolean = false,
 ) {
-    BasicText(
+    InstrumentText(
         s,
         modifier,
         style =
@@ -79,6 +78,7 @@ private fun Action(s: String, on: Boolean = false, doIt: () -> Unit) {
 
 @Composable
 fun Instrument(a: MainActivity) {
+    val toolLayout = remember(a) { ToolLayout(a) }
     LaunchedEffect(a.showFps) {
         while (a.showFps) {
             a.updateFps()
@@ -122,21 +122,22 @@ fun Instrument(a: MainActivity) {
         if (a.fullFinder.enabled) {
             FullFinderScreen(a, landscape,
                 finderOverlay = { Finder(a, overlayOnly = true) },
-                instruments = { FinderHeader(a); FinderFooter(a); Toolbar(a, false) },
+                instruments = { FinderHeader(a); FinderFooter(a); Toolbar(a, false, toolLayout) },
                 histogram = { Histogram(a) }, meter = { Meter(a) })
         } else if (landscape) {
             Row(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                Toolbar(a, true)
+                Toolbar(a, true, toolLayout)
                 Box(Modifier.weight(1f)) { content() }
             }
         } else {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                Toolbar(a, false)
+                Toolbar(a, false, toolLayout)
                 Box(Modifier.weight(1f)) { content() }
             }
         }
-        if (a.toolsPage == "more") FloatingTools(a, landscape)
-        else if (a.toolsPage.isNotEmpty()) MoreToolsDialog(a)
+        if (a.toolsPage == "more") FloatingTools(a, landscape, toolLayout)
+        else if (a.toolsPage == "toolEditor") ToolEditor(a, toolLayout)
+        else if (a.toolsPage.isNotEmpty()) MoreToolsDialog(a, toolLayout)
         if (a.settings)
             Settings(
                 a,
@@ -202,93 +203,69 @@ private fun Split(a: MainActivity, key: String, vertical: Boolean, span: Float, 
 }
 
 @Composable
-private fun Toolbar(a: MainActivity, land: Boolean) {
+private fun Toolbar(a: MainActivity, land: Boolean, layout: ToolLayout) {
     @Composable
-    fun brand() {
-        if (land) BasicText("LightData", Modifier.fillMaxWidth().padding(horizontal = 2.dp),
-            style = TextStyle(color = paper, fontWeight = FontWeight.Bold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+    fun brand(modifier: Modifier, size: Int) {
+        InstrumentText("LightData", modifier, style = TextStyle(color = paper, fontWeight = FontWeight.Bold,
+            textAlign = if (land) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start),
             maxLines = 1, softWrap = false,
-            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(4.sp, 16.sp, .25.sp))
-        else Label("LightData", 20, paper, bold = true)
+            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(4.sp, size.sp, .25.sp))
     }
     @Composable
-    fun buttons() {
-        Tool("预览", 0, a.preview) { a.preview = !a.preview }
-        Tool("测光点", 1, a.frozen) { if (!a.runningCal) a.toggleFreeze() }
-        Tool("声音", 3, a.soundEnabled) { a.toggleMeterSound() }
-        Tool("更多", 4, a.toolsPage.isNotEmpty()) { a.toolsPage = "more" }
-        Tool(if (a.resizing) "完成" else "设置", 2, a.resizing) {
+    fun buttons(slot: Dp) {
+        for (item in layout.toolbar) {
+            val active = item.active(a)
+            ToolButton(item.caption, active, slot, { item.open(a) }) { c -> FinderToolIcon(item, c, active) }
+        }
+        ToolButton("更多", a.toolsPage.isNotEmpty(), slot, { a.toolsPage = "more" }) { c ->
+            Canvas(Modifier.size(19.dp)) {
+                for (i in 0..2) drawCircle(c,size.width*.09f,Offset(size.width*(.16f+i*.34f),size.height*.5f))
+            }
+        }
+        ToolButton(if (a.resizing) "完成" else "设置", a.resizing, slot, {
             if (a.resizing) a.resizing = false else a.settings = true
-        }
-    }
-    if (land)
-        Column(
-            Modifier.width(55.dp).fillMaxHeight().padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            brand()
-            Spacer(Modifier.weight(1f))
-            buttons()
-        }
-    else
-        Row(
-            Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            brand()
-            Spacer(Modifier.weight(1f))
-            buttons()
-        }
-}
-
-@Composable
-private fun Tool(title: String, type: Int, active: Boolean, click: () -> Unit) {
-    Column(
-        Modifier.width(48.dp).height(48.dp).clickable(onClick = click),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        val c = if (active) amber else paper
-        Canvas(Modifier.size(19.dp)) {
-            val w = size.width
-            fun p(x: Float, y: Float) = Offset(w * x, w * y)
-            when (type) {
-                0 -> {
-                    drawOval(
-                        c,
-                        p(.05f, .23f),
-                        Size(.9f * w, .54f * w),
-                        style = Stroke(1.6.dp.toPx()),
-                    )
-                    drawCircle(c, .14f * w)
-                }
-                1 -> {
-                    drawCircle(c, .29f * w, style = Stroke(1.5.dp.toPx()))
-                    drawLine(c, p(0f, .5f), p(.3f, .5f), 2f)
-                    drawLine(c, p(.7f, .5f), p(1f, .5f), 2f)
-                    drawLine(c, p(.5f, 0f), p(.5f, .3f), 2f)
-                    drawLine(c, p(.5f, .7f), p(.5f, 1f), 2f)
-                }
-                3 -> {
-                    drawLine(c,p(.16f,.39f),p(.16f,.65f),2.dp.toPx())
-                    drawLine(c,p(.16f,.39f),p(.48f,.18f),2.dp.toPx())
-                    drawLine(c,p(.48f,.18f),p(.48f,.83f),2.dp.toPx())
-                    drawLine(c,p(.48f,.83f),p(.16f,.65f),2.dp.toPx())
-                    if (active) drawArc(c,-52f,104f,false,p(.17f,.15f),Size(w*.73f,w*.72f),style=Stroke(2.dp.toPx()))
-                    else drawLine(c,p(.07f,.95f),p(.91f,.07f),2.dp.toPx())
-                }
-                4 -> for (i in 0..2) drawCircle(c,w*.09f,p(.16f+i*.34f,.5f))
-                else -> {
-                    for (i in 0..2) {
-                        val y = .18f + i * .32f
-                        drawLine(c, p(.04f, y), p(.96f, y), 2f)
-                        drawCircle(c, w * .105f, p(if (i == 1) .68f else .32f, y))
-                    }
+        }) { c ->
+            Canvas(Modifier.size(19.dp)) {
+                val w = size.width
+                for (i in 0..2) {
+                    val y = w * (.18f + i * .32f)
+                    drawLine(c, Offset(.04f*w,y), Offset(.96f*w,y), 2f)
+                    drawCircle(c, w * .105f, Offset(w * if (i == 1) .68f else .32f, y))
                 }
             }
         }
-        Label(title, 10, c)
+    }
+    if (land) {
+        BoxWithConstraints(Modifier.width(55.dp).fillMaxHeight().padding(vertical = 5.dp)) {
+            val minHeight = 24.dp + 48.dp * (layout.toolbar.size + 2)
+            val compact = maxHeight < minHeight
+            val scroll = if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier
+            Column(Modifier.fillMaxSize().then(scroll), horizontalAlignment = Alignment.CenterHorizontally) {
+                brand(Modifier.fillMaxWidth().padding(horizontal = 2.dp), 16)
+                if (!compact) Spacer(Modifier.weight(1f))
+                buttons(52.dp)
+            }
+        }
+    } else {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 5.dp)) {
+            val slot = minOf(52.dp, maxWidth * .84f / (layout.toolbar.size + 2))
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                brand(Modifier.weight(1f).padding(end = 3.dp), 20)
+                buttons(slot)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolButton(title: String, active: Boolean, width: Dp, click: () -> Unit, icon: @Composable (Color) -> Unit) {
+    val color = if (active) amber else paper
+    Column(Modifier.width(width).height(48.dp).clickable(role = Role.Button, onClick = click),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        icon(color)
+        InstrumentText(title, Modifier.fillMaxWidth(), style = TextStyle(color = color,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center), maxLines = 1, softWrap = false,
+            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(7.sp, 10.sp, .5.sp))
     }
 }
 
@@ -323,6 +300,18 @@ private fun FinderHeader(a: MainActivity) {
 @Composable
 private fun FinderFooter(a: MainActivity) {
     val s = a.sample
+        if (a.spatial.views.any { it.moveBack })
+            Label("近处测点视差过大，请移回原位",12,amber,Modifier.padding(horizontal=8.dp))
+        if (a.dynamicEnabled && !a.frozen) {
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal=6.dp)) {
+                if (a.spatial.views.none { it.spot.id > 0 }) Label("点按画面添加动态测光点",11,muted)
+                for (v in a.spatial.views.filter { it.spot.id > 0 }) {
+                    val status = if (v.stale) tr(" · 上次读数") else ""
+                    Label("#${v.spot.id}  ${n(v.spot.ev)} EV100 · Zone ${n(v.spot.ev-a.effectiveMiddleEv+5)}$status",
+                        11,(if (v.stale) muted else spotColor(v.spot.id)).copy(alpha=v.alpha),Modifier.padding(4.dp))
+                }
+            }
+        }
         if (a.pendingGroundEv != null) Row(verticalAlignment = Alignment.CenterVertically) {
             Label("取下手机，对准实景，点选毛玻璃上测量的同一物点", 12, amber, Modifier.weight(1f).padding(horizontal = 6.dp))
             Action("取消比对") { a.cancelGroundComparison() }
@@ -416,7 +405,7 @@ internal fun FinderPreview(a: MainActivity, glass: Rect? = null) {
         } },
         modifier = Modifier.fillMaxSize(),
         update = {
-            if (glass != null) it.setGlassFrame(glass.left, glass.top, glass.right, glass.bottom)
+            it.setGlassFrame(glass?.let { rect -> GlassFrame(rect.left, rect.top, rect.right, rect.bottom) })
             it.onRendered = if (a.showFps) a::markRendered else null
             it.show(look, if (a.frozen || s.still) 1.0 else a.previewScale)
         },
@@ -442,11 +431,13 @@ private fun Finder(a: MainActivity, overlayOnly: Boolean = false) {
                 Box(fitted) {
                     if (!overlayOnly) FinderPreview(a)
                     Canvas(
-                        Modifier.fillMaxSize().pointerInput(a.frozen, a.pendingGroundEv, a.reportEnabled) {
+                        Modifier.fillMaxSize().pointerInput(a.frozen, a.pendingGroundEv, a.reportEnabled, a.dynamicEnabled) {
                             detectTapGestures(onDoubleTap = if (a.reportEnabled) { _ -> a.archiveFinder() } else null) {
                                 if (a.pendingGroundEv != null) {
                                     a.compareGroundPoint(it.x / size.width.toDouble(), it.y / size.height.toDouble())
-                                } else if (a.frozen)
+                                } else if (a.dynamicEnabled && !a.frozen)
+                                    a.spatial.place(it.x / size.width.toDouble(),it.y / size.height.toDouble(),false)
+                                else if (a.frozen)
                                     a.point(
                                         it.x / size.width.toDouble(),
                                         it.y / size.height.toDouble(),
@@ -524,16 +515,20 @@ private fun Finder(a: MainActivity, overlayOnly: Boolean = false) {
                             drawCircle(Color.Black,cell*.55f,pos,style=Stroke(3.dp.toPx()))
                             drawCircle(paper,cell*.55f,pos,style=Stroke(1.5.dp.toPx()))
                         }
-                        for (pt in a.spots) {
+                        val tracked = a.spatial.onScreen()
+                        for (v in a.spots.map { TrackedSpot(it) } + tracked) {
+                            val pt = v.spot
+                            val c = (if (v.stale) muted else if (pt.id==0) amber else spotColor(pt.id)).copy(alpha=v.alpha)
                             val at = Offset((pt.x * w).toFloat(), (pt.y * h).toFloat())
-                            drawCircle(Color.Black, 9.dp.toPx(), at, style = Stroke(4.dp.toPx()))
-                            drawCircle(spotColor(pt.id), 9.dp.toPx(), at, style = Stroke(2.dp.toPx()))
+                            drawCircle(Color.Black.copy(alpha=v.alpha), 9.dp.toPx(), at, style = Stroke(4.dp.toPx()))
+                            drawCircle(c, 9.dp.toPx(), at, style = Stroke(2.dp.toPx()))
                             drawContext.canvas.nativeCanvas.drawText(
-                                pt.id.toString(),
+                                (if (pt.id==0) (v.kelvin?.let { "$it K" } ?: "— K") else "#${pt.id}") +
+                                    (if (v.stale) tr(" · 上次读数") else ""),
                                 at.x + 10.dp.toPx(),
                                 at.y,
                                 android.graphics.Paint(1).apply {
-                                    color = spotColor(pt.id).toArgb()
+                                    color = c.toArgb()
                                     setShadowLayer(2.dp.toPx(), 0f, 0f, android.graphics.Color.BLACK)
                                     textSize = 14.dp.toPx()
                                 },
@@ -555,6 +550,7 @@ private fun Finder(a: MainActivity, overlayOnly: Boolean = false) {
                         Label("＋ 起始$level",10,amber,Modifier.align(Alignment.BottomStart).padding(4.dp)
                             .background(ink.copy(alpha=.78f)).padding(horizontal=4.dp,vertical=1.dp))
                     }
+                    TemperatureOverlay(a,Modifier.fillMaxSize())
                     if (a.showFps) Label("${if (a.frozen) 0 else a.renderedFps} FPS", 11, paper,
                         Modifier.align(Alignment.TopEnd).padding(5.dp).background(ink.copy(alpha=.78f))
                             .padding(horizontal=5.dp,vertical=2.dp), monoType=true)
@@ -614,8 +610,8 @@ private fun Histogram(a: MainActivity) {
         Canvas(
             Modifier.weight(1f).fillMaxWidth()
                 .semantics {
-                    contentDescription = "场景 EV100 直方图，可横向拖动与双指缩放，双击恢复自动"
-                    stateDescription = "%.1f 至 %.1f EV100，纵轴 %.2f 倍".format(
+                    contentDescription = tr("场景 EV100 直方图，可横向拖动与双指缩放，双击恢复自动")
+                    stateDescription = tr("%.1f 至 %.1f EV100，纵轴 %.2f 倍").format(
                         java.util.Locale.US, chart.left, chart.right, chart.gain
                     )
                 }
@@ -727,16 +723,19 @@ private fun Histogram(a: MainActivity) {
                 }
                 val labelRows = mutableListOf<Float>()
                 // If several readings map to the same pixel, share the vertical stroke.
-                val columns = a.spots.sortedBy { it.ev }.groupBy { x(it.ev).roundToInt() }
-                for (group in columns.values) for ((index, pt) in group.withIndex()) {
+                val points = a.spots.map { TrackedSpot(it) } + a.spatial.views.filter { it.spot.id > 0 }
+                val columns = points.sortedBy { it.spot.ev }.groupBy { x(it.spot.ev).roundToInt() }
+                for (group in columns.values) for ((index, v) in group.withIndex()) {
+                    val pt = v.spot
+                    val c = (if (v.stale) muted else spotColor(pt.id)).copy(alpha=v.alpha)
                     val xx = x(pt.ev)
                     if (xx !in 0f..w) continue
-                    paint.color = spotColor(pt.id).toArgb()
+                    paint.color = c.toArgb()
                     val segment = 5.dp.toPx()
                     val pattern = if (group.size == 1) null else PathEffect.dashPathEffect(
                         floatArrayOf(segment, segment * (group.size - 1)), segment * (group.size - index))
-                    drawLine(spotColor(pt.id), Offset(xx, 0f), Offset(xx, h), 1.dp.toPx(), pathEffect = pattern)
-                    val label = "#" + pt.id
+                    drawLine(c, Offset(xx, 0f), Offset(xx, h), 1.dp.toPx(), pathEffect = pattern)
+                    val label = "#" + pt.id + if (v.stale) tr(" · 上次读数") else ""
                     val labelX = min(xx + 2, w - paint.measureText(label)).coerceAtLeast(0f)
                     val row = labelRows.indexOfFirst { it < labelX }.let { if (it < 0) labelRows.size else it }
                     if (row == labelRows.size) labelRows.add(0f)
@@ -831,7 +830,9 @@ private fun MeterButton(text: String, selected: Boolean, enabled: Boolean, modif
     Box(modifier.padding(1.dp).height(31.dp).clip(RoundedCornerShape(4.dp))
         .background(if (selected) selectedFill else palette?.button ?: ink).clickable(enabled = enabled, onClick = action),
         contentAlignment = Alignment.Center) {
-        Label(text, 12, if (selected) palette?.backdrop ?: ink else paper, bold = true)
+        InstrumentText(if (text == "连续" && UiLanguage.usesEnglish) "Cont." else text,
+            style=TextStyle(color=if (selected) palette?.backdrop ?: ink else paper,fontWeight=FontWeight.Bold),
+            maxLines=1,softWrap=false,autoSize=androidx.compose.foundation.text.TextAutoSize.StepBased(8.sp,12.sp,.5.sp))
     }
 }
 
@@ -848,7 +849,7 @@ private fun ExposureCompensation(ev: Double, residual: Double?, enabled: Boolean
         return ((fraction * 30).roundToInt() - 15) / 3.0
     }
     Column(Modifier.fillMaxWidth().semantics {
-        contentDescription = "曝光补偿"
+        contentDescription = tr("曝光补偿")
         onLongClick("输入曝光补偿") { if (enabled) onEdit(); enabled }
         progressBarRangeInfo = ProgressBarRangeInfo(ev.toFloat(), -5f..5f, 29)
         setProgress { value -> if (enabled) change((value * 3).roundToInt() / 3.0); enabled }
@@ -912,7 +913,7 @@ private fun ExposureTable(a: MainActivity, e: Exposure, m: Modifier) {
         val size = if (maxWidth < 170.dp) 11 else if (maxWidth < 280.dp) 13 else 17
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Label(if (a.useMeasuredLoss) "含实测 +" + n(a.opticalLoss) + " EV" else if (a.opticalLoss > 0) "含光损 +" + n(a.opticalLoss) + " EV" else if (showTimes) "等效曝光 · → 实拍" else "等效曝光", if (compact) 10 else 12, muted)
+                InstrumentText(if (a.useMeasuredLoss) "含实测 +" + n(a.opticalLoss) + " EV" else if (a.opticalLoss > 0) "含光损 +" + n(a.opticalLoss) + " EV" else if (showTimes) "等效曝光 · → 实拍" else "等效曝光", Modifier.weight(1f), style=TextStyle(color=muted,fontSize=(if (compact) 10 else 12).sp), maxLines=1, softWrap=false)
                 Label("ISO " + isoLabel(e.iso), if (compact) 10 else 12, muted, monoType = true)
             }
             Row(
@@ -956,19 +957,19 @@ private fun ExposureTable(a: MainActivity, e: Exposure, m: Modifier) {
                             }
                             .semantics {
                                 if (!a.frozen) {
-                                    onClick("选择曝光组合") { a.selectPair(pair); true }
+                                    onClick(tr("选择曝光组合")) { a.selectPair(pair); true }
                                     customActions = listOf(
-                                        CustomAccessibilityAction("输入快门速度") { a.editExposureValue(true); true },
-                                        CustomAccessibilityAction("输入光圈") { a.editExposureValue(false); true },
+                                        CustomAccessibilityAction(tr("输入快门速度")) { a.editExposureValue(true); true },
+                                        CustomAccessibilityAction(tr("输入光圈")) { a.editExposureValue(false); true },
                                     )
                                 }
-                                contentDescription =
+                                contentDescription = tr(
                                     "快门 " +
                                         timeLabel(pair.t) +
                                         "，光圈 " +
                                         n(pair.a) +
                                         "，ISO " +
-                                        isoLabel(pair.iso)
+                                        isoLabel(pair.iso))
                             },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -1053,7 +1054,7 @@ private fun Wheel(
     val cb by rememberUpdatedState(change)
     val current by rememberUpdatedState(selected)
     BoxWithConstraints(
-        m.fillMaxWidth().semantics { contentDescription = title + " " + fmt(value) }
+        m.fillMaxWidth().semantics { contentDescription = tr(title + " " + fmt(value)) }
     ) {
         val count =
             when {
@@ -1103,7 +1104,7 @@ private fun Wheel(
                     Box(
                         Modifier.weight(1f).fillMaxHeight().combinedClickable(
                             enabled = enabled || onLongPress != null,
-                            onLongClickLabel = "自定义 ISO",
+                            onLongClickLabel = tr("自定义 ISO"),
                             onLongClick = onLongPress,
                             onClick = { if (enabled) cb(values[i]) },
                         ),
@@ -1171,6 +1172,15 @@ private fun Settings(a: MainActivity, m: Modifier) {
             SoundSettingsPanel(a)
             return@Column
         }
+        val languages = listOf("system", "zh", "en")
+        val languageNames = listOf("跟随系统", "简体中文", "English")
+        Setting("语言", languageNames[languages.indexOf(UiLanguage.selection)]) {
+            a.choose("语言", languageNames) { index ->
+                val selected = languages[index]
+                a.prefs.edit().putString("uiLanguage", selected).apply()
+                UiLanguage.update(a, selected)
+            }
+        }
         Setting("声音", "音效设置") { soundSettings = true }
         FinderSwitch("肤色自动提亮", a.skinLiftEnabled) { a.configureSkinLift(it, a.skinLiftEv) }
         if (a.skinLiftEnabled) {
@@ -1190,7 +1200,7 @@ private fun Settings(a: MainActivity, m: Modifier) {
             try {
                 a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             } catch (_: android.content.ActivityNotFoundException) {
-                android.widget.Toast.makeText(a, "请安装可打开网页的浏览器", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(a, tr("请安装可打开网页的浏览器"), android.widget.Toast.LENGTH_SHORT).show()
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1289,16 +1299,16 @@ private fun Settings(a: MainActivity, m: Modifier) {
                 a.selectCamera(true)
             }
         }
-        Setting("曝光曲线", a.film.name + " · ISO " + isoLabel(a.filmIso)) { a.chooseFilm() }
+        Setting("曝光曲线", a.film.name + " · " + a.filmSpeedLabel + " " + isoLabel(a.filmIso)) { a.chooseFilm() }
         Setting("测光 ISO", isoLabel(a.manual.iso) + if (a.isoLocked) " · 已锁定" else " · 手动") {
             if (a.frozen) a.notifyUser("请先退出点测光")
-            else if (a.isoLocked) a.choose("跟随胶片 ISO " + isoLabel(a.filmIso), listOf("解锁并设置 ISO")) {
+            else if (a.isoLocked) a.choose("跟随胶片 " + a.filmSpeedLabel + " " + isoLabel(a.filmIso), listOf("解锁并设置 ISO")) {
                 a.input("测光 ISO", a.manual.iso, .001..10000000.0) { value ->
                     a.toggleIsoLock()
                     a.setValues(a.manual.copy(iso = value))
                 }
             }
-            else a.choose("测光 ISO", listOf("设置 ISO", "恢复胶片 ISO " + isoLabel(a.filmIso))) { i ->
+            else a.choose("测光 ISO", listOf("设置 ISO", "恢复胶片 " + a.filmSpeedLabel + " " + isoLabel(a.filmIso))) { i ->
                 if (i == 1) a.toggleIsoLock()
                 else a.input("测光 ISO", a.manual.iso, .001..10000000.0) { a.setValues(a.manual.copy(iso = it)) }
             }
