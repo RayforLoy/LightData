@@ -335,7 +335,16 @@ class MainActivity : ComponentActivity() {
         private set
     var bellowsDrawMm by mutableDoubleStateOf(0.0)
         private set
-    val geometricLoss get() = opticalLossStops(filterStops, bellowsDrawMm, focal)
+    var converterRatio by mutableDoubleStateOf(1.0)
+        private set
+    fun setConverter(ratio: Double) {
+        if (ratio !in .25..4.0) return
+        converterRatio = ratio
+        put("converterRatio", ratio)
+        if (frozen) frozenExposure = meteredExposure()
+    }
+    val bellowsLoss get() = opticalLossStops(0.0, bellowsDrawMm, focal)
+    val geometricLoss get() = filterStops + bellowsLoss + converterStops(converterRatio)
     var measuredOpticalLoss by mutableStateOf<Double?>(null)
         private set
     var useMeasuredLoss by mutableStateOf(false)
@@ -373,13 +382,13 @@ class MainActivity : ComponentActivity() {
             return
         }
         val subject = source.spot(x,y,response)
-        val loss = measuredTransmissionLoss(subject,screen)
+        val loss = measuredTransmissionLoss(subject,screen,converterRatio < 1.0)
         val text = "物点 " + n(subject) + " EV100 · 毛玻璃 " + n(screen) + " EV100"
         val dialog = MeterDialog(this).setTitle("同点光损实测")
         if (loss == null) {
             dialog.setMessage(text + "\n毛玻璃读数高于物点，请核对校准光圈、光照和所选物点。")
         } else {
-            dialog.setMessage(text + "\n使用实测 +" + n(loss) + " EV，替代当前滤镜与皮腔补偿。")
+            dialog.setMessage(text + "\n使用实测 " + signed(loss) + " EV，替代计算光损。")
                 .setPositiveButton("应用实测值") { _,_ ->
                     measuredOpticalLoss = loss
                     put("measuredOpticalLoss",loss)
@@ -482,8 +491,9 @@ class MainActivity : ComponentActivity() {
         skinLiftEv = saved("skinLiftEv", 1.0).takeIf { it in -5.0..5.0 } ?: 1.0
         faceMeterEnabled = prefs.getBoolean("faceMeter", false)
         rig.setFaceDetection(faceMeterEnabled)
-        measuredOpticalLoss = prefs.getString("measuredOpticalLoss", null)?.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }
+        measuredOpticalLoss = prefs.getString("measuredOpticalLoss", null)?.toDoubleOrNull()?.takeIf { it.isFinite() }
         useMeasuredLoss = measuredOpticalLoss != null && prefs.getBoolean("useMeasuredLoss", false)
+        converterRatio = saved("converterRatio", 1.0).takeIf { it in .25..4.0 } ?: 1.0
         filterStops = saved("filterStops", 0.0).coerceIn(0.0, 24.0)
         bellowsDrawMm = saved("bellowsDrawMm", 0.0).coerceIn(0.0, 4000.0)
         focal = saved("focal", 35.0)

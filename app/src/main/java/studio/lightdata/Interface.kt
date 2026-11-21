@@ -799,15 +799,15 @@ private fun Meter(a: MainActivity) {
             MeterButton("单次", a.single, !a.frozen, Modifier.weight(1.5f)) { a.meterOnce() }
         }
         if (a.frozen && a.placedSpotId != null) {
-            Label("按 #${a.placedSpotId} 放置于 Zone ${a.placedZone}", 12, amber)
+            Label("按 #${a.placedSpotId} 放置于 Zone ${a.placedZone}" + opticsLabel(a.opticalLoss), 12, amber)
         } else if (a.mode == "M") {
-            Label(if (a.sample == null) "— EV" else "曝光偏差  " + signed((a.meterMiddleTarget ?: a.effectiveMiddleEv) - a.effectiveMiddleEv) + " EV",
+            Label(if (a.sample == null) "— EV" else "曝光偏差  " + signed((a.meterMiddleTarget ?: a.effectiveMiddleEv) - a.effectiveMiddleEv) + " EV" + opticsLabel(a.opticalLoss),
                 12, amber, Modifier.padding(vertical = 4.dp), monoType = true)
         } else {
             val requested = a.compensationEv
             val residual = a.meterMiddleTarget?.let { it - a.effectiveMiddleEv - requested }
-            ExposureCompensation(requested, residual, !a.frozen, a::adjustCompensation) {
-                a.input("曝光补偿（EV）", a.compensationEv, -5.0..5.0, a::adjustCompensation)
+            ExposureCompensation(requested, a.opticalLoss, residual, !a.frozen, a::adjustCompensation) {
+                a.input("手动曝光补偿（EV）", a.compensationEv, -5.0..5.0, a::adjustCompensation)
             }
         }
         ExposureTable(a, e, Modifier.weight(2.25f))
@@ -836,8 +836,10 @@ private fun MeterButton(text: String, selected: Boolean, enabled: Boolean, modif
     }
 }
 
+private fun opticsLabel(loss: Double) = if (loss == 0.0) "" else " · 光损 " + signed(loss) + " EV"
+
 @Composable
-private fun ExposureCompensation(ev: Double, residual: Double?, enabled: Boolean, update: (Double) -> Unit, edit: () -> Unit) {
+private fun ExposureCompensation(ev: Double, loss: Double, residual: Double?, enabled: Boolean, update: (Double) -> Unit, edit: () -> Unit) {
     val palette = LocalGlassPalette.current
     val muted = palette?.secondary ?: muted
     val line = palette?.grid ?: line
@@ -859,8 +861,9 @@ private fun ExposureCompensation(ev: Double, residual: Double?, enabled: Boolean
         }, horizontalArrangement = Arrangement.SpaceBetween) {
             Label(if (residual != null && abs(residual) > .25) "超限 " + signed(residual) + " EV" else "曝光补偿",
                 10, if (residual != null && abs(residual) > .25) red else muted)
-            Label((if (ev >= 0.0) "+" else "") + n(ev) + " EV", 11, amber, monoType = true)
+            Label(signed(ev + loss) + " EV", 11, amber, monoType = true)
         }
+        if (loss != 0.0) Label("手动 " + signed(ev) + opticsLabel(loss), 10, muted)
         Canvas(Modifier.fillMaxWidth().height(25.dp).pointerInput(enabled) {
             if (enabled) detectTapGestures(onLongPress = { onEdit() }, onTap = {
                 change(stopAt(it.x, size.width.toFloat(), 6.dp.toPx()))
@@ -913,7 +916,7 @@ private fun ExposureTable(a: MainActivity, e: Exposure, m: Modifier) {
         val size = if (maxWidth < 170.dp) 11 else if (maxWidth < 280.dp) 13 else 17
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                InstrumentText(if (a.useMeasuredLoss) "含实测 +" + n(a.opticalLoss) + " EV" else if (a.opticalLoss > 0) "含光损 +" + n(a.opticalLoss) + " EV" else if (showTimes) "等效曝光 · → 实拍" else "等效曝光", Modifier.weight(1f), style=TextStyle(color=muted,fontSize=(if (compact) 10 else 12).sp), maxLines=1, softWrap=false)
+                InstrumentText(if (showTimes) "等效曝光 · → 实拍" else "等效曝光", Modifier.weight(1f), style=TextStyle(color=muted,fontSize=(if (compact) 10 else 12).sp), maxLines=1, softWrap=false)
                 Label("ISO " + isoLabel(e.iso), if (compact) 10 else 12, muted, monoType = true)
             }
             Row(
@@ -1203,6 +1206,7 @@ private fun Settings(a: MainActivity, m: Modifier) {
                 android.widget.Toast.makeText(a, tr("请安装可打开网页的浏览器"), android.widget.Toast.LENGTH_SHORT).show()
             }
         }
+        AboutSettings(a, ::open)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Label("直方图像素纵轴", 14, paper, Modifier.weight(1f))
             for ((index, label) in listOf("线性", "对数").withIndex()) {
@@ -1352,8 +1356,8 @@ private fun Settings(a: MainActivity, m: Modifier) {
 @Composable
 internal fun OpticsCompensationControls(a: MainActivity) {
     a.measuredOpticalLoss?.let { measured ->
-        Setting("光损补偿来源", if (a.useMeasuredLoss) "毛玻璃实测 +" + n(measured) + " EV" else "滤镜与皮腔") {
-            a.choose("光损补偿来源", listOf("毛玻璃同点实测 +" + n(measured) + " EV", "滤镜与皮腔 +" + n(a.geometricLoss) + " EV")) {
+        Setting("光损补偿来源", if (a.useMeasuredLoss) "毛玻璃实测 " + signed(measured) + " EV" else "计算光损") {
+            a.choose("光损补偿来源", listOf("毛玻璃同点实测 " + signed(measured) + " EV", "计算光损 " + signed(a.geometricLoss) + " EV")) {
                 a.chooseOpticalSource(it == 0)
             }
         }
@@ -1369,7 +1373,18 @@ internal fun OpticsCompensationControls(a: MainActivity) {
             }
         }
     }
-    if (!a.useMeasuredLoss) Setting("皮腔补偿", if (a.bellowsDrawMm == 0.0) "关闭" else n(a.bellowsDrawMm) + " mm · +" + n(a.opticalLoss-a.filterStops) + " EV") {
+    if (!a.useMeasuredLoss) {
+        fun ratioLabel(ratio: Double) = "${n(ratio)}× · ${signed(converterStops(ratio))} EV"
+        Setting("减焦镜 / 增距镜", if (a.converterRatio==1.0) "关闭" else ratioLabel(a.converterRatio)) {
+            val ratios = listOf(1.0, .64, .71, 1.4, 2.0)
+            a.choose("减焦镜 / 增距镜", listOf("关闭") + ratios.drop(1).map(::ratioLabel) + "自定义倍率…") { i ->
+                if (i < ratios.size) a.setConverter(ratios[i])
+                else a.input("转换倍率（0.25–4×）", a.converterRatio, .25..4.0, a::setConverter)
+            }
+        }
+        if (a.converterRatio != 1.0) Label("按镜头原标光圈测光；取景焦距请填转换后的实际焦距。", 12, muted)
+    }
+    if (!a.useMeasuredLoss) Setting("皮腔补偿", if (a.bellowsDrawMm == 0.0) "关闭" else n(a.bellowsDrawMm) + " mm · +" + n(a.bellowsLoss) + " EV") {
         a.input("镜头主平面至胶片总距（mm，0 关闭）", a.bellowsDrawMm,0.0..4000.0) {
             a.adjustOptics(a.filterStops,it)
         }
@@ -1377,7 +1392,7 @@ internal fun OpticsCompensationControls(a: MainActivity) {
 }
 
 @Composable
-private fun Setting(name: String, value: String, click: () -> Unit) {
+internal fun Setting(name: String, value: String, click: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = click).padding(vertical = 11.dp),
         horizontalArrangement = Arrangement.SpaceBetween,

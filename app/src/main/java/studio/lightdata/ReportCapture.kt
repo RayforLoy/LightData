@@ -21,7 +21,7 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
     val formatAtTap = format
     val focalAtTap = focal
     val modeAtTap = mode
-    val compensation = if (mode == "M" || placedSpotId != null) 0.0 else compensationEv + appliedSkinEv
+    val compensation = if (mode == "M" || placedSpotId != null) 0.0 else compensationEv + appliedSkinEv + opticalLoss
     val atlas = if (useLut && preview) activeAtlas?.takeIf { it.entry.file == variant?.file } else null
     val look = Look(frame,response,frame.cameraEv-middle,filmAtTap,preview,mode=="M",style,atlas)
     val tracked = spatial.views
@@ -62,6 +62,8 @@ internal fun MainActivity.captureMeterReport(location: Location?, complete: (Res
         add("倒易律" to (rec.exposureSeconds?.let { timeLabel(it)+" · " }.orEmpty() + rec.label +
             if(rec.networkEstimate) " · 数据来源网络" else ""))
         add("光损补偿" to (if(useMeasuredLoss) "毛玻璃实测" else "几何计算") + " ${signed(opticalLoss)} EV")
+        if (!useMeasuredLoss && converterRatio != 1.0)
+            add("减焦镜 / 增距镜" to "${n(converterRatio)}× · ${signed(converterStops(converterRatio))} EV")
         if (!useMeasuredLoss) add("滤镜 / 皮腔伸长量" to "${signed(filterStops)} EV · ${n(bellowsDrawMm)} mm")
         val styleName = listOf("彩色","黑白","Aerochrome","Lomo Purple").getOrNull(style).orEmpty()
         val previewName = when { !preview -> "关闭"; useLut -> lutStatus; else -> "亮度模拟" }

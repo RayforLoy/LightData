@@ -84,7 +84,7 @@ internal fun FinderTool.active(a: MainActivity): Boolean = when (this) {
     FinderTool.FULL -> a.fullFinder.enabled
     FinderTool.PARALLAX -> a.parallax.enabled
     FinderTool.REPORTS -> a.reportEnabled
-    FinderTool.OPTICS -> a.opticalLoss > 0
+    FinderTool.OPTICS -> a.opticalLoss != 0.0 || a.converterRatio != 1.0 || a.useMeasuredLoss
     else -> false
 }
 
